@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GET } from "../app/sandbox/[...sandbox]/route";
+import { GET } from "../../../../app/sandbox/[...sandbox]/route";
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const ORIGIN = "http://localhost:3000";

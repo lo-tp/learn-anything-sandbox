@@ -20,4 +20,4 @@ Quality gates: `npm run typecheck` and `npm test`.
 
 ## Sync back into `learn-anything`
 
-To ship demos into the main app: copy `app/sandbox/`, `app/demo-sandbox/`, `core/sandbox/`, `scripts/build-sandbox.mjs`, and `test/sandbox-routes.test.ts` back into `learn-anything`, and re-add the `build:sandbox` script plus the `predev`/`prebuild`/`pretest` hooks to its `package.json`. Re-integration is tracked under main's map #11 / #37.
+To ship demos into the main app: copy `app/sandbox/`, `app/demo-sandbox/`, `core/sandbox/`, `scripts/build-sandbox.mjs`, and `test/sandbox/` + `test/app/` back into `learn-anything`, and re-add the `build:sandbox` script plus the `predev`/`prebuild`/`pretest` hooks to its `package.json`. Re-integration is tracked under main's map #11 / #37.

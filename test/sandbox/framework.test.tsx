@@ -16,7 +16,7 @@ import React, { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen } from "@testing-library/react";
 
-import { SandboxApp, clampPart } from "../core/sandbox/framework";
+import { SandboxApp, clampPart } from "../../core/sandbox/framework";
 
 const PARTS = 3;
 

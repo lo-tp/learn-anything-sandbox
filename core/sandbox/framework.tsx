@@ -67,7 +67,7 @@ function postToParent(message: object) {
 }
 
 /**
- * The harness body, exported for unit tests (test/sandbox-framework.test.tsx).
+ * The harness body, exported for unit tests (test/sandbox/framework.test.tsx).
  * Production wiring is at the bottom of this module; tests render this with a
  * stub `Demo` and the trusted `parts` count.
  */
