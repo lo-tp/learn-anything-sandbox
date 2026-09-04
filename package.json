@@ -1,0 +1,32 @@
+{
+  "name": "learn-anything-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:demos": "node scripts/build-demos.mjs",
+    "pretest": "npm run build:demos",
+    "predev": "npm run build:demos",
+    "prebuild": "npm run build:demos"
+  },
+  "dependencies": {
+    "esbuild": "^0.28.2",
+    "next": "16.3.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
