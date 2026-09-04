@@ -11,7 +11,7 @@ This is a **standalone sandbox host app** (own dev server, own origin) — a dev
 ```sh
 npm install
 npm run dev
-# → http://localhost:3000/demo-sandbox
+# → http://localhost:3001/demo-sandbox
 ```
 
 `predev`/`prebuild`/`pretest` run `build:sandbox` (`node scripts/build-sandbox.mjs`), which esbuilds `out/sandbox/harness.js` + `out/sandbox/vendor/*.js`.
