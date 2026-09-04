@@ -1,5 +1,5 @@
 /**
- * `core/sandbox/harness.tsx` — the sandbox harness (ADR 0007, docs/demos.md).
+ * `core/sandbox/framework.tsx` — the sandbox harness (ADR 0007, docs/demos.md).
  *
  * The only program in the opaque-origin sandbox that is **not** LLM-generated.
  * Identical for every demo; built once at deploy (`harness.js`, ESM, react
@@ -37,10 +37,10 @@ import { createRoot } from "react-dom/client";
 type DemoMeta = { slug: string; parts: number };
 const { slug, parts } = (window as unknown as { DEMO: DemoMeta }).DEMO;
 
-// Non-static template → esbuild leaves it a native import() of the per-demo
-// bundle; the import map + module cache route its `react` to the same single
-// vendored instance the harness uses.
-const Demo = lazy(() => import(`/sandbox/${slug}/bundle.js`));
+/** Clamp an untrusted `DEMO_SET_PART` value into `0..parts−1`. */
+export function clampPart(part: number, parts: number): number {
+  return Math.min(Math.max(part, 0), parts - 1);
+}
 
 class Boundary extends React.Component<
   { onError: (error: unknown) => void; children: React.ReactNode },
@@ -66,7 +66,19 @@ function postToParent(message: object) {
   parent.postMessage(message, "*");
 }
 
-function App() {
+/**
+ * The harness body, exported for unit tests (test/sandbox-framework.test.tsx).
+ * Production wiring is at the bottom of this module; tests render this with a
+ * stub `Demo` and the trusted `parts` count.
+ */
+export interface SandboxAppProps {
+  /** The lazy per-demo bundle (wired below to `/sandbox/{slug}/bundle.js`). */
+  Demo: React.LazyExoticComponent<React.ComponentType<{ part: number }>>;
+  /** Trusted stepper count from the page-injected `window.DEMO.parts`. */
+  parts: number;
+}
+
+export function SandboxApp({ Demo, parts }: SandboxAppProps) {
   const [part, setPart] = useState(0);
 
   useEffect(() => {
@@ -74,14 +86,14 @@ function App() {
       const data = event.data as { type?: unknown; part?: unknown } | null;
       if (data?.type === "DEMO_SET_PART" && Number.isInteger(data.part)) {
         // Clamp, never trust: the sandbox is the boundary, this is the seam.
-        setPart(Math.min(Math.max(data.part as number, 0), parts - 1));
+        setPart(clampPart(data.part as number, parts));
       }
     };
     addEventListener("message", onMessage);
     return () => removeEventListener("message", onMessage);
-    // `parts` is a module-scope constant (from the page-injected DEMO meta),
-    // never changes → not a dependency.
-  }, []);
+    // `parts` is the page-injected constant (trusted DEMO meta); it never
+    // changes, but it is a prop, so it stays in the deps list for the linter.
+  }, [parts]);
 
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -107,4 +119,12 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+// The per-demo bundle. Non-static template → esbuild leaves it a native
+// import() of the row's derived module; the import map + module cache route
+// its `react` to the same single vendored instance the harness uses.
+const Demo = lazy(() => import(`/sandbox/${slug}/bundle.js`));
+
+// Entry point: the demo page owns `<div id="root">` — boot there. Importing
+// this module where no root exists (unit tests) renders nothing.
+const root = document.getElementById("root");
+if (root) createRoot(root).render(<SandboxApp Demo={Demo} parts={parts} />);

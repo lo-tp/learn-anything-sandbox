@@ -7,7 +7,7 @@
  *   vendor/react.js            self-contained ESM of `node_modules/react`
  *   vendor/react-jsx-runtime.js ESM facade, `react` external
  *   vendor/react-dom-client.js ESM facade, `react` external, `scheduler` bundled in
- *   harness.js                 from `core/sandbox/harness.tsx`, all react specifiers external
+ *   harness.js                 from `core/sandbox/framework.tsx`, all react specifiers external
  *
  * The demo page's import map routes bare `react` / `react/jsx-runtime` /
  * `react-dom/client` to these files and the browser's module cache makes
@@ -118,7 +118,7 @@ await build({
   outfile: path.join(root, "out/sandbox/vendor/react-dom-client.js"),
 });
 
-// 4. harness.js — the trusted harness app (core/sandbox/harness.tsx). React is
+// 4. harness.js — the trusted harness app (core/sandbox/framework.tsx). React is
 //    external so the import map routes it to the vendored module; jsx is
 //    automatic; the non-static template `import(`/sandbox/{slug}/bundle.js`)`
 //    must pass through untouched.
@@ -126,7 +126,7 @@ await build({
   ...shared,
   jsx: "automatic",
   external: ["react", "react/jsx-runtime", "react-dom/client"],
-  entryPoints: [path.join(root, "core/sandbox/harness.tsx")],
+  entryPoints: [path.join(root, "core/sandbox/framework.tsx")],
   outfile: path.join(root, "out/sandbox/harness.js"),
 });
 
