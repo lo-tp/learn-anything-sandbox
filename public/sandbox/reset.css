@@ -1,0 +1,39 @@
+/* Minimal reset + canvas for the sandbox demo page (served at
+ * /sandbox/reset.css). The demo page is opaque-origin and app-owned; the
+ * LLM bundle receives this canvas and styles everything else itself.
+ * Dark by design: the sample deck renders light text and translucent
+ * glass cards, and demos are expected to carry their own palettes.
+ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  color: #d0daff;
+  background:
+    radial-gradient(1200px 800px at 20% -10%, rgba(246, 211, 101, 0.15), transparent 60%),
+    radial-gradient(1000px 700px at 110% 110%, rgba(143, 203, 255, 0.15), transparent 60%),
+    #0b1026;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+img,
+video {
+  max-width: 100%;
+}
