@@ -118,7 +118,7 @@ const slides = [
         <li style={{ margin: '12px 0' }}>✅ Force causes acceleration.</li>
         <li style={{ margin: '12px 0' }}>✅ Mass resists acceleration.</li>
         <li style={{ margin: '12px 0' }}>✅ F = m · a is the bridge.</li>
-        <li style={{ margin: '12px 0' }}>✅ Direction matters – it's a vector!</li>
+        <li style={{ margin: '12px 0' }}>✅ Direction matters – it&apos;s a vector!</li>
       </ul>
     ),
   },
