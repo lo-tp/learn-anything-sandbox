@@ -8,10 +8,10 @@
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:demos": "node scripts/build-demos.mjs",
-    "pretest": "npm run build:demos",
-    "predev": "npm run build:demos",
-    "prebuild": "npm run build:demos"
+    "build:sandbox": "node scripts/build-sandbox.mjs",
+    "pretest": "npm run build:sandbox",
+    "predev": "npm run build:sandbox",
+    "prebuild": "npm run build:sandbox"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

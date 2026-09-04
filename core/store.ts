@@ -1,7 +1,7 @@
 /**
  * Minimal standalone store for the sandbox app.
  *
- * Carries only what the `/demos` route needs — a minimal copy of the
+ * Carries only what the `/sandbox` route needs — a minimal copy of the
  * `learn-anything` store's demo lookup (not the full store, which drags in
  * drizzle/pg). The route's `@/core/store` import resolves to this file.
  */

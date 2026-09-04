@@ -4,7 +4,7 @@
  * `/demo-sandbox` — a dev showcase host for the sample demo (#37).
  *
  * The minimal host side of the ADR 0007 protocol around
- * `<iframe sandbox="allow-scripts" src="/demos/sample">`: part stepper
+ * `<iframe sandbox="allow-scripts" src="/sandbox/sample">`: part stepper
  * (parent → sandbox `DEMO_SET_PART`), auto-height (sandbox → parent
  * `SANDBOX_RESIZE`, clamped), error banner (sandbox → parent
  * `SANDBOX_ERROR`), and a small protocol log so the channel is visible.
@@ -98,7 +98,7 @@ export default function DemoSandboxPage() {
     <main style={{ maxWidth: 1200, margin: "24px auto", fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 20 }}>Demo sandbox — sample</h1>
       <p style={{ fontSize: 14, opacity: 0.7 }}>
-        LLM-shaped demo TSX → esbuild → <code>/demos/sample/bundle.js</code> →
+        LLM-shaped demo TSX → esbuild → <code>/sandbox/sample/bundle.js</code> →
         <code> &lt;iframe sandbox=&quot;allow-scripts&quot;&gt; </code> (opaque origin).
       </p>
       {/* Slide controller — OUTSIDE the iframe: part = slide, posted as DEMO_SET_PART */}
@@ -149,7 +149,7 @@ export default function DemoSandboxPage() {
       <iframe
         ref={frameRef}
         sandbox="allow-scripts"
-        src={`/demos/${SLUG}`}
+        src={`/sandbox/${SLUG}`}
         title="sample demo sandbox"
         style={{
           width: "100%",

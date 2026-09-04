@@ -1,17 +1,17 @@
 /**
- * `/demos/*` — the Demos delivery surface (ADR 0007, docs/demos.md, issue #36).
+ * `/sandbox/*` — the Sandbox delivery surface (ADR 0007, docs/demos.md, issue #36).
  *
  * One catch-all handler, dispatched on the path:
  *
  * | URL                          | Response                                                            |
  * |------------------------------|---------------------------------------------------------------------|
- * | `/demos/harness.js`          | the deploy-built harness module (`out/demos/harness.js`)            |
- * | `/demos/vendor/*.js`         | the deploy-built vendor modules (`out/demos/vendor/`)               |
- * | `/demos/{slug}`              | the demo page HTML — **403 unless `Sec-Fetch-Dest: iframe`**, 404 on unknown slug |
- * | `/demos/{slug}/bundle.js`    | the row's `demo_js` — **no fetch-dest gate**: in a plain tab the JS source is inert text |
+ * | `/sandbox/harness.js`        | the deploy-built harness module (`out/sandbox/harness.js`)          |
+ * | `/sandbox/vendor/*.js`       | the deploy-built vendor modules (`out/sandbox/vendor/`)             |
+ * | `/sandbox/{slug}`            | the demo page HTML — **403 unless `Sec-Fetch-Dest: iframe`**, 404 on unknown slug |
+ * | `/sandbox/{slug}/bundle.js`  | the row's `demo_js` — **no fetch-dest gate**: in a plain tab the JS source is inert text |
  *
  * While the `demo_js` schema columns are pending (#32/#37), the exact slug
- * `sample` is the hand-inserted demo: `core/demos/sample.tsx` is compiled
+ * `sample` is the hand-inserted demo: `core/sandbox/sample.tsx` is compiled
  * **per request** (same esbuild transform the write pipeline will run) and
  * served `no-store` — its source is editable, so immutability would be a
  * lie. Its page declares `parts: SAMPLE_PARTS` (one per slide), so the
@@ -50,20 +50,20 @@ const CORSA = { "Access-Control-Allow-Origin": "*" };
 /** Slide count of the hand-inserted sample deck (one part per slide). */
 const SAMPLE_PARTS = 5;
 
-/** Vendor modules we ship — the fixed set from scripts/build-demos.mjs. */
+/** Vendor modules we ship — the fixed set from scripts/build-sandbox.mjs. */
 const VENDOR_MODULES = [
   "react.js",
   "react-jsx-runtime.js",
   "react-dom-client.js",
 ] as const;
 
-/** The deploy-built artifacts live in `out/demos/` (gitignored). */
+/** The deploy-built artifacts live in `out/sandbox/` (gitignored). */
 const ARTIFACTS: Record<string, string> = {
-  "harness.js": path.join("out", "demos", "harness.js"),
+  "harness.js": path.join("out", "sandbox", "harness.js"),
   ...Object.fromEntries(
     VENDOR_MODULES.map((name) => [
       `vendor/${name}`,
-      path.join("out", "demos", "vendor", name),
+      path.join("out", "sandbox", "vendor", name),
     ]),
   ),
 };
@@ -79,7 +79,7 @@ function serveArtifact(file: string): Response {
       },
     });
   } catch {
-    return new Response("artifact not built — run npm run build:demos", {
+    return new Response("artifact not built — run npm run build:sandbox", {
       status: 404,
     });
   }
@@ -89,24 +89,24 @@ function serveArtifact(file: string): Response {
  * The demo page, byte-for-byte ours (docs/demos.md, "The demo page").
  * Exactly one untrusted thing is reachable from it: `{slug}/bundle.js`.
  */
-function demoPage(origin: string, slug: string, parts: number | null): string {
+function sandboxPage(origin: string, slug: string, parts: number | null): string {
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <script type="importmap">
 { "imports": {
-    "react": "/demos/vendor/react.js",
-    "react/jsx-runtime": "/demos/vendor/react-jsx-runtime.js",
-    "react-dom/client": "/demos/vendor/react-dom-client.js"
+    "react": "/sandbox/vendor/react.js",
+    "react/jsx-runtime": "/sandbox/vendor/react-jsx-runtime.js",
+    "react-dom/client": "/sandbox/vendor/react-dom-client.js"
 } }
 </script>
-<link rel="stylesheet" href="${origin}/demos/reset.css">
+<link rel="stylesheet" href="${origin}/sandbox/reset.css">
 </head>
 <body>
 <div id="root"></div>
 <script>window.DEMO = { slug: ${JSON.stringify(slug)}, parts: ${parts ?? 0} };</script>
-<script type="module" src="/demos/harness.js"></script>
+<script type="module" src="/sandbox/harness.js"></script>
 </body>
 </html>
 `;
@@ -114,12 +114,12 @@ function demoPage(origin: string, slug: string, parts: number | null): string {
 
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ demos: string[] }> },
+  { params }: { params: Promise<{ sandbox: string[] }> },
 ) {
   const notFound = () => new Response("not found", { status: 404 });
-  const [first, second, ...rest] = (await params).demos;
+  const [first, second, ...rest] = (await params).sandbox;
 
-  // Deeper than `/demos/{a}/{b}` is not a demo URL.
+  // Deeper than `/sandbox/{a}/{b}` is not a demo URL.
   if (rest.length > 0) return notFound();
 
   // Deploy-built artifacts, served as-is (immutable, built at deploy).
@@ -135,14 +135,14 @@ export async function GET(
   }
 
   // Hand-inserted demo (#37) — exact slug. The db row doesn't exist yet, so
-  // the source file IS the row: read `core/demos/sample.tsx` and run it
+  // the source file IS the row: read `core/sandbox/sample.tsx` and run it
   // through the same write-time transform every LLM-authored demo will go
   // through (esbuild, TSX, jsx automatic, react left bare for the import
   // map). Per request, `no-store` — the source is editable in dev.
   if (first === "sample" && second === "bundle.js") {
     try {
       const src = readFileSync(
-        path.join(process.cwd(), "core/demos/sample.tsx"),
+        path.join(process.cwd(), "core/sandbox/sample.tsx"),
         "utf8",
       );
       const { code } = await transform(src, {
@@ -193,7 +193,7 @@ export async function GET(
     // Hand-inserted demo (#37): the on-disk row declares one part per slide.
     if (slug === "sample") {
       const origin = new URL(request.url).origin;
-      return new Response(demoPage(origin, slug, SAMPLE_PARTS), {
+      return new Response(sandboxPage(origin, slug, SAMPLE_PARTS), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": IMMUTABLE,
@@ -204,7 +204,7 @@ export async function GET(
     const demo = await getDemoBySlug(slug);
     if (!demo) return notFound();
     const origin = new URL(request.url).origin;
-    return new Response(demoPage(origin, slug, demo.parts), {
+    return new Response(sandboxPage(origin, slug, demo.parts), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": IMMUTABLE,

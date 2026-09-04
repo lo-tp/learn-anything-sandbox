@@ -1,5 +1,5 @@
 /**
- * `core/demos/harness.tsx` — the sandbox harness (ADR 0007, docs/demos.md).
+ * `core/sandbox/harness.tsx` — the sandbox harness (ADR 0007, docs/demos.md).
  *
  * The only program in the opaque-origin sandbox that is **not** LLM-generated.
  * Identical for every demo; built once at deploy (`harness.js`, ESM, react
@@ -40,7 +40,7 @@ const { slug, parts } = (window as unknown as { DEMO: DemoMeta }).DEMO;
 // Non-static template → esbuild leaves it a native import() of the per-demo
 // bundle; the import map + module cache route its `react` to the same single
 // vendored instance the harness uses.
-const Demo = lazy(() => import(`/demos/${slug}/bundle.js`));
+const Demo = lazy(() => import(`/sandbox/${slug}/bundle.js`));
 
 class Boundary extends React.Component<
   { onError: (error: unknown) => void; children: React.ReactNode },

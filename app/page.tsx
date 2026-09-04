@@ -9,7 +9,7 @@ export default function Home() {
     >
       <h1>learn-anything-sandbox</h1>
       <p>
-        Development home for the <code>learn-anything</code> demos surface.
+        Development home for the <code>learn-anything</code> sandbox surface.
       </p>
       <p>
         <a href="/demo-sandbox">/demo-sandbox</a> — sample demo showcase host.

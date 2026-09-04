@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * build:demos — the deploy-time esbuild step (docs/demos.md, "Pipeline — DEPLOY").
+ * build:sandbox — the deploy-time esbuild step (docs/demos.md, "Pipeline — DEPLOY").
  *
- * Produces the four immutable sandbox artifacts in `out/demos/` (gitignored):
+ * Produces the four immutable sandbox artifacts in `out/sandbox/` (gitignored):
  *
  *   vendor/react.js            self-contained ESM of `node_modules/react`
  *   vendor/react-jsx-runtime.js ESM facade, `react` external
  *   vendor/react-dom-client.js ESM facade, `react` external, `scheduler` bundled in
- *   harness.js                 from `core/demos/harness.tsx`, all react specifiers external
+ *   harness.js                 from `core/sandbox/harness.tsx`, all react specifiers external
  *
  * The demo page's import map routes bare `react` / `react/jsx-runtime` /
  * `react-dom/client` to these files and the browser's module cache makes
@@ -83,7 +83,7 @@ const requireBanner = [
 await build({
   ...shared,
   stdin: { contents: facade(path.join(nm, "react/index.js"), "react", true), resolveDir: root },
-  outfile: path.join(root, "out/demos/vendor/react.js"),
+  outfile: path.join(root, "out/sandbox/vendor/react.js"),
 });
 
 // 2. vendor/react-jsx-runtime.js — `react` external. The prod jsx runtime is
@@ -98,7 +98,7 @@ await build({
     contents: facade(path.join(nm, "react/jsx-runtime.js"), "react/jsx-runtime"),
     resolveDir: root,
   },
-  outfile: path.join(root, "out/demos/vendor/react-jsx-runtime.js"),
+  outfile: path.join(root, "out/sandbox/vendor/react-jsx-runtime.js"),
 });
 
 // 3. vendor/react-dom-client.js — `react` external; `scheduler` is *not*
@@ -115,32 +115,32 @@ await build({
     contents: facade(path.join(nm, "react-dom/client.js"), "react-dom/client"),
     resolveDir: root,
   },
-  outfile: path.join(root, "out/demos/vendor/react-dom-client.js"),
+  outfile: path.join(root, "out/sandbox/vendor/react-dom-client.js"),
 });
 
-// 4. harness.js — the trusted harness app (core/demos/harness.tsx). React is
+// 4. harness.js — the trusted harness app (core/sandbox/harness.tsx). React is
 //    external so the import map routes it to the vendored module; jsx is
-//    automatic; the non-static template `import(`/demos/{slug}/bundle.js`)`
+//    automatic; the non-static template `import(`/sandbox/{slug}/bundle.js`)`
 //    must pass through untouched.
 await build({
   ...shared,
   jsx: "automatic",
   external: ["react", "react/jsx-runtime", "react-dom/client"],
-  entryPoints: [path.join(root, "core/demos/harness.tsx")],
-  outfile: path.join(root, "out/demos/harness.js"),
+  entryPoints: [path.join(root, "core/sandbox/harness.tsx")],
+  outfile: path.join(root, "out/sandbox/harness.js"),
 });
 
 // The hand-inserted demo (#37) is deliberately NOT built here:
-// `app/demos/[...demos]/route.ts` compiles `core/demos/sample.tsx` per
+// `app/sandbox/[...sandbox]/route.ts` compiles `core/sandbox/sample.tsx` per
 // request (no-store), mirroring the per-turn write pipeline without a
 // rebuild step.
 
-console.log("out/demos/:");
+console.log("out/sandbox/:");
 for (const f of [
   "vendor/react.js",
   "vendor/react-jsx-runtime.js",
   "vendor/react-dom-client.js",
   "harness.js",
 ]) {
-  console.log(`  ${f}  ${statSync(path.join(root, "out/demos", f)).size} B`);
+  console.log(`  ${f}  ${statSync(path.join(root, "out/sandbox", f)).size} B`);
 }
