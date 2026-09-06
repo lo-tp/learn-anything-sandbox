@@ -18,9 +18,14 @@
  * harness clamps `DEMO_SET_PART` across the whole deck instead of the
  * stub's random 1–3.
  *
- * Every response carries `Cache-Control: public, max-age=31536000, immutable`
- * — honest because the slug is 128-bit random (unguessable), the row is
- * append-only, and the bundle is written once per row. Every response also
+ * The deploy-built artifacts and each row's bundle carry
+ * `Cache-Control: public, max-age=31536000, immutable` — honest because the
+ * slug is 128-bit random (unguessable), the row is append-only, and the
+ * bundle is written once per row. The demo page is `no-store`: it embeds the
+ * request's origin, and its security headers (CSP `frame-ancestors`) must
+ * not freeze in an immutable cache — a year-old cached copy would still lack
+ * a policy added later, and the browser would serve it without revalidating.
+ * Every response also
  * carries `Access-Control-Allow-Origin: *`: the opaque-origin sandbox loads
  * its module scripts (harness, vendor, bundle) in **CORS mode**, so without
  * the header the module graph fails to load outright (empirical —
@@ -196,7 +201,7 @@ export async function GET(
       return new Response(sandboxPage(origin, slug, SAMPLE_PARTS), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": IMMUTABLE,
+          "Cache-Control": "no-store",
           ...CORSA,
         },
       });
@@ -207,7 +212,7 @@ export async function GET(
     return new Response(sandboxPage(origin, slug, demo.parts), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Cache-Control": IMMUTABLE,
+        "Cache-Control": "no-store",
         ...CORSA,
       },
     });

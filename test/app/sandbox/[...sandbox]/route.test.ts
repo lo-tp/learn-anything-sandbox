@@ -71,7 +71,9 @@ describe("the demo page (GET /sandbox/{slug})", () => {
     const res = await get("/sandbox/abc123", IFRAME);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
-    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    // no-store: the page embeds the request's origin, and its security
+    // headers (CSP frame-ancestors) must not freeze in an immutable cache.
+    expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     // Import map precedes every module script.
     expect(html.indexOf('type="importmap"')).toBeGreaterThan(-1);
