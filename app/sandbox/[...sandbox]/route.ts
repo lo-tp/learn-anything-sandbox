@@ -139,11 +139,7 @@ export async function GET(
     return serveArtifact(`vendor/${second}`);
   }
 
-  // Hand-inserted demo (#37) — exact slug. The db row doesn't exist yet, so
-  // the source file IS the row: read `core/sandbox/sample.tsx` and run it
-  // through the same write-time transform every LLM-authored demo will go
-  // through (esbuild, TSX, jsx automatic, react left bare for the import
-  // map). Per request, `no-store` — the source is editable in dev.
+  // Hand-inserted demo (#37) — compiled at runtime, cached by the browser.
   if (first === "sample" && second === "bundle.js") {
     try {
       const src = readFileSync(
@@ -160,7 +156,7 @@ export async function GET(
         sourcefile: "sample.tsx",
       });
       return new Response(code, {
-        headers: { "Content-Type": JS, "Cache-Control": "no-store", ...CORSA },
+        headers: { "Content-Type": JS, "Cache-Control": "public, max-age=3600", ...CORSA },
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

@@ -47,8 +47,7 @@ describe("deploy-built artifacts", () => {
     const res = await get("/sandbox/sample/bundle.js");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/javascript");
-    // The source is editable, so the response must not be immutable-cached.
-    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = await res.text();
     // TS annotations and JSX are gone — the browser receives plain ESM,
