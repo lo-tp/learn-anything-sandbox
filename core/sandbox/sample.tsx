@@ -133,18 +133,15 @@ const Presentation = ({ part }: { part: number }) => {
   const current = Math.min(Math.max(part, 0), total - 1);
 
   // ----- 内联样式对象（全部） -----
+  // Invisible deck stage: only the structural box the slide track needs to be
+  // sized + clipped. No glass panel — the single dark card is the visual.
   const containerStyle: CSSProperties = {
     width: '100%',
     maxWidth: '1000px',
     height: '90vh',
     maxHeight: '700px',
-    background: 'rgba(255,255,255,0.06)',
-    backdropFilter: 'blur(12px)',
-    borderRadius: '40px',
-    boxShadow: '0 25px 60px rgba(0,0,0,0.7), inset 0 1px 2px rgba(255,255,255,0.1)',
     overflow: 'hidden',
     position: 'relative',
-    border: '1px solid rgba(255,255,255,0.08)',
     margin: '0 auto',
   };
 
