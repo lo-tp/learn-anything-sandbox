@@ -145,7 +145,18 @@ const Presentation = ({ part }: { part: number }) => {
     overflow: 'hidden',
     position: 'relative',
     border: '1px solid rgba(255,255,255,0.08)',
-    margin: '20px auto',
+    margin: '0 auto',
+  };
+
+  // Full-viewport centerer: the deck is vertically centered in the iframe
+  // viewport (the canvas body is top-aligned, so the demo owns its layout).
+  const stageStyle: CSSProperties = {
+    minHeight: '100vh',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    boxSizing: 'border-box',
   };
 
   const trackStyle = {
@@ -212,23 +223,25 @@ const Presentation = ({ part }: { part: number }) => {
   };
 
   return (
-    <div style={containerStyle}>
-      <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
-        <div style={trackStyle}>
-          {slides.map((slide, index) => {
-            const isActive = index === current;
-            return (
-              <div key={slide.id} style={slideStyle}>
-                <div style={cardStyle(isActive)}>
-                  <div style={titleStyle}>{slide.title}</div>
-                  <div style={subtitleStyle}>{slide.subtitle}</div>
-                  <div style={bodyStyle}>{slide.body}</div>
+    <div style={stageStyle}>
+      <div style={containerStyle}>
+        <div style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+          <div style={trackStyle}>
+            {slides.map((slide, index) => {
+              const isActive = index === current;
+              return (
+                <div key={slide.id} style={slideStyle}>
+                  <div style={cardStyle(isActive)}>
+                    <div style={titleStyle}>{slide.title}</div>
+                    <div style={subtitleStyle}>{slide.subtitle}</div>
+                    <div style={bodyStyle}>{slide.body}</div>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
 
+        </div>
       </div>
     </div>
   );
