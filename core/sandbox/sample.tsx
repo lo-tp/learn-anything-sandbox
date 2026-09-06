@@ -137,9 +137,7 @@ const Presentation = ({ part }: { part: number }) => {
   // sized + clipped. No glass panel — the single dark card is the visual.
   const containerStyle: CSSProperties = {
     width: '100%',
-    maxWidth: '1000px',
-    height: '90vh',
-    maxHeight: '700px',
+    height: '100%',
     overflow: 'hidden',
     position: 'relative',
     margin: '0 auto',
@@ -147,12 +145,16 @@ const Presentation = ({ part }: { part: number }) => {
 
   // Full-viewport centerer: the deck is vertically centered in the iframe
   // viewport (the canvas body is top-aligned, so the demo owns its layout).
+  // Fills the viewport exactly (height: 100vh, no padding) so the card can
+  // reach the screen edges in fullscreen. Using an exact height (not
+  // minHeight) keeps body scrollHeight === viewport, so the host's
+  // auto-height (which reads body scrollHeight) stays stable — no growth loop.
   const stageStyle: CSSProperties = {
-    minHeight: '100vh',
+    height: '100vh',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '20px',
+    padding: 0,
     boxSizing: 'border-box',
   };
 
@@ -172,7 +174,7 @@ const Presentation = ({ part }: { part: number }) => {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: '40px 50px',
+    padding: '20px 30px',
     color: '#f0f4ff',
     boxSizing: 'border-box',
   };
