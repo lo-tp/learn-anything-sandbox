@@ -2,13 +2,12 @@
 /**
  * build:sandbox — the deploy-time esbuild step (docs/demos.md, "Pipeline — DEPLOY").
  *
- * Produces the five immutable sandbox artifacts in `out/sandbox/` (gitignored):
+ * Produces the four immutable sandbox artifacts in `out/sandbox/` (gitignored):
  *
  *   vendor/react.js            self-contained ESM of `node_modules/react`
  *   vendor/react-jsx-runtime.js ESM facade, `react` external
  *   vendor/react-dom-client.js ESM facade, `react` external, `scheduler` bundled in
  *   harness.js                 from `core/sandbox/framework.tsx`, all react specifiers external
- *   sample/bundle.js           the hand-inserted sample demo (`core/sandbox/sample.tsx`)
  *
  * The demo page's import map routes bare `react` / `react/jsx-runtime` /
  * `react-dom/client` to these files and the browser's module cache makes
@@ -131,25 +130,12 @@ await build({
   outfile: path.join(root, "out/sandbox/harness.js"),
 });
 
-// 5. sample/bundle.js — the hand-inserted demo (#37). Same transform the
-//    per-turn write pipeline runs (tsx, automatic jsx, production define);
-//    `react` stays bare for the import map. Served immutable — rebuild
-//    after editing core/sandbox/sample.tsx.
-await build({
-  ...shared,
-  jsx: "automatic",
-  external: ["react", "react/jsx-runtime"],
-  entryPoints: [path.join(root, "core/sandbox/sample.tsx")],
-  outfile: path.join(root, "out/sandbox/sample/bundle.js"),
-});
-
 console.log("out/sandbox/:");
 for (const f of [
   "vendor/react.js",
   "vendor/react-jsx-runtime.js",
   "vendor/react-dom-client.js",
   "harness.js",
-  "sample/bundle.js",
 ]) {
   console.log(`  ${f}  ${statSync(path.join(root, "out/sandbox", f)).size} B`);
 }

@@ -1,44 +1,39 @@
 "use client";
 
 /**
- * `/demo-sandbox` — a dev showcase host for the sample demo (#37).
+ * `/demo-sandbox` — a dev showcase host for the sample demos (#37).
  *
  * The minimal host side of the ADR 0007 protocol around
- * `<iframe sandbox="allow-scripts" src="/sandbox/sample">`: part stepper
- * (parent → sandbox `DEMO_SET_PART`), auto-height (sandbox → parent
- * `SANDBOX_RESIZE`, clamped), error banner (sandbox → parent
- * `SANDBOX_ERROR`), and a small protocol log so the channel is visible.
+ * `<iframe sandbox="allow-scripts" src="/sandbox/sample_N">`: auto-height
+ * (sandbox → parent `SANDBOX_RESIZE`, clamped), error banner (sandbox →
+ * parent `SANDBOX_ERROR`), and a small protocol log so the channel is
+ * visible. The host only receives: every demo is one part, so there is no
+ * `DEMO_SET_PART` to send (the harness still supports it for multi-part
+ * rows).
  *
  * Receipts are validated on `event.origin === "null"` (the opaque origin's
- * serialization) and field-by-field — never trusted wholesale. Append `?auto=1`
- * to auto-step through the deck's parts (used by the headless e2e check).
+ * serialization) and field-by-field — never trusted wholesale.
  *
  * The picker switches between the hand-inserted demos the route dispatches
- * (#37): the 5-slide deck (`/sandbox/sample`) and the single-slide
- * `/sandbox/sample_N` demos, each of which renders `sample/N.tsx` standalone.
+ * (#37): the one-part `/sandbox/sample_N` demos, each of which renders
+ * `sample/N.tsx` standalone.
  */
-import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
-// Must mirror the hand-inserted demos the route resolves on disk: the deck
-// (one part per slide, SAMPLE_PARTS) and the one-part `sample_N` demos.
-const DEMOS: { slug: string; parts: number; label: string }[] = [
-  { slug: "sample", parts: 5, label: "deck" },
-  ...[1, 2, 3, 4, 5].map((n) => ({ slug: `sample_${n}`, parts: 1, label: `slide ${n}` })),
-];
-// Roomy canvas: the sample is a slide deck (up to 1000×700), so the
+// Must mirror the hand-inserted demos the route resolves on disk:
+// core/sandbox/sample_N.tsx renders sample/N.tsx standalone (one part each).
+const DEMOS = [1, 2, 3, 4, 5].map((n) => ({ slug: `sample_${n}`, label: `slide ${n}` }));
+// Roomy canvas: a slide is a presentation card (up to 1000×700), so the
 // sandbox never shrinks below presentation size; SANDBOX_RESIZE can only
 // grow it further, up to MAX_HEIGHT.
 const MIN_HEIGHT = 720;
 const MAX_HEIGHT = 1200;
 
 export default function DemoSandboxPage() {
-  const frameRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(720);
   const [error, setError] = useState<string | null>(null);
-  const [slug, setSlug] = useState("sample");
-  const [part, setPart] = useState(0);
+  const [slug, setSlug] = useState("sample_1");
   const [log, setLog] = useState<string[]>([]);
-  const parts = DEMOS.find((d) => d.slug === slug)!.parts;
 
   const say = (line: string) =>
     setLog((l) => [...l.slice(-19), `${new Date().toISOString().slice(11, 19)} ${line}`]);
@@ -60,27 +55,6 @@ export default function DemoSandboxPage() {
     return () => removeEventListener("message", onMessage);
   }, []);
 
-  // ?auto=1 — step through every slide so headless checks can watch the log.
-  useEffect(() => {
-    if (!window.location.search.includes("auto=1") || parts < 2) return;
-    const timers = Array.from(
-      { length: parts - 1 },
-      (_, i) => setTimeout(() => goPart(i + 1), 2500 * (i + 1)),
-    );
-    return () => timers.forEach(clearTimeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Parent → sandbox: the only outbound message, targetOrigin "*" (the app
-  // origin is unknowable to the sandbox; delivery safety is field checks at
-  // the receiver, per ADR 0007).
-  function goPart(p: number) {
-    const clamped = Math.min(Math.max(p, 0), parts - 1);
-    setPart(clamped);
-    frameRef.current?.contentWindow?.postMessage({ type: "DEMO_SET_PART", part: clamped }, "*");
-    say(`→ DEMO_SET_PART {part: ${clamped}}`);
-  }
-
   const demoTab = (active: boolean): CSSProperties => ({
     padding: "4px 12px",
     cursor: "pointer",
@@ -91,28 +65,6 @@ export default function DemoSandboxPage() {
     color: active ? "#fff" : "#333",
   });
 
-  const arrow: CSSProperties = {
-    width: 36,
-    height: 36,
-    fontSize: 16,
-    cursor: "pointer",
-    border: "1px solid #888",
-    borderRadius: "50%",
-    background: "#fff",
-  };
-  const arrowDisabled: CSSProperties = { ...arrow, opacity: 0.3, cursor: "default" };
-  const dot = (active: boolean): CSSProperties => ({
-    width: 12,
-    height: 12,
-    padding: 0,
-    cursor: "pointer",
-    border: "none",
-    borderRadius: "50%",
-    background: active ? "#2563eb" : "#bbb",
-    transform: active ? "scale(1.25)" : "scale(1)",
-    transition: "all 0.2s ease",
-  });
-
   return (
     <main style={{ maxWidth: 1200, margin: "24px auto", fontFamily: "system-ui, sans-serif" }}>
       <h1 style={{ fontSize: 20 }}>Demo sandbox — {slug}</h1>
@@ -120,7 +72,7 @@ export default function DemoSandboxPage() {
         LLM-shaped demo TSX → esbuild → <code>/sandbox/{slug}/bundle.js</code> →
         <code> &lt;iframe sandbox=&quot;allow-scripts&quot;&gt; </code> (opaque origin).
       </p>
-      {/* Demo picker: the deck, or one slide standalone (sample_N). */}
+      {/* Demo picker: one slide standalone (sample_N). */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
         {DEMOS.map((d) => (
           <button
@@ -128,7 +80,6 @@ export default function DemoSandboxPage() {
             style={demoTab(d.slug === slug)}
             onClick={() => {
               setSlug(d.slug);
-              setPart(0);
               setError(null);
             }}
           >
@@ -136,38 +87,6 @@ export default function DemoSandboxPage() {
           </button>
         ))}
       </div>
-      {/* Slide controller — OUTSIDE the iframe: part = slide, posted as DEMO_SET_PART. */}
-      {parts > 1 && (
-        <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-          <button
-            style={part === 0 ? arrowDisabled : arrow}
-            onClick={() => goPart(part - 1)}
-            disabled={part === 0}
-            aria-label="previous slide"
-          >
-            ◀
-          </button>
-          {Array.from({ length: parts }, (_, i) => (
-            <button
-              key={i}
-              style={dot(i === part)}
-              onClick={() => goPart(i)}
-              aria-label={`slide ${i + 1}`}
-            />
-          ))}
-          <button
-            style={part === parts - 1 ? arrowDisabled : arrow}
-            onClick={() => goPart(part + 1)}
-            disabled={part === parts - 1}
-            aria-label="next slide"
-          >
-            ▶
-          </button>
-          <span style={{ fontSize: 13, opacity: 0.6 }}>
-            slide {part + 1}/{parts} · height: {height}px
-          </span>
-        </div>
-      )}
       {error && (
         <div
           style={{
@@ -184,7 +103,6 @@ export default function DemoSandboxPage() {
         </div>
       )}
       <iframe
-        ref={frameRef}
         sandbox="allow-scripts"
         src={`/sandbox/${slug}`}
         title={`${slug} demo sandbox`}

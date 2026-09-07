@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// Shared presentational pieces for the sample deck. Each slide (1.tsx … 5.tsx)
+// Shared presentational pieces for the sample slides. Each slide (1.tsx … 5.tsx)
 // renders its title + subtitle + body through <Slide>, so the card chrome
 // (background, title/subtitle/body styling) lives in exactly one place.
 
