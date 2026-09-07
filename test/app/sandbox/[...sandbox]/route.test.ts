@@ -63,6 +63,52 @@ describe("deploy-built artifacts", () => {
   });
 });
 
+describe("single-slide sample_N demos (#37)", () => {
+  const IFRAME = { "sec-fetch-dest": "iframe" };
+
+  it.each(["sample_1", "sample_2", "sample_3", "sample_4", "sample_5"])(
+    "compiles /sandbox/%s/bundle.js per request",
+    async (slug) => {
+      const res = await get(`/sandbox/${slug}/bundle.js`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toContain("text/javascript");
+      expect(res.headers.get("cache-control")).toBe("public, max-age=3600");
+      const body = await res.text();
+      // TS annotations and JSX are gone — plain ESM, `react` left bare.
+      expect(body).not.toContain("{ isActive: boolean }");
+      expect(body).toContain("react");
+    },
+  );
+
+  it("bundles the slide's own content (sample_1 → sample/1.tsx)", async () => {
+    const body = await (await get("/sandbox/sample_1/bundle.js")).text();
+    expect(body).toContain("Newton's Second Law");
+    const body2 = await (await get("/sandbox/sample_2/bundle.js")).text();
+    expect(body2).toContain("Force & Acceleration");
+  });
+
+  it("serves the sample_N demo page to an iframe with parts: 1", async () => {
+    const res = await get("/sandbox/sample_1", IFRAME);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const html = await res.text();
+    expect(html).toContain('window.DEMO = { slug: "sample_1", parts: 1 }');
+  });
+
+  it("403s the sample_N page outside an iframe", async () => {
+    expect((await get("/sandbox/sample_1")).status).toBe(403);
+  });
+
+  it("falls through to the slug store when no entry file exists on disk", async () => {
+    // sample_6 has no core/sandbox/sample_6.tsx — like any random slug under
+    // the #32 stub it is served by getDemoBySlug (the 404 path is verified
+    // structurally, not by slug).
+    const res = await get("/sandbox/sample_6/bundle.js");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("sample_6");
+  });
+});
+
 describe("the demo page (GET /sandbox/{slug})", () => {
   const IFRAME = { "sec-fetch-dest": "iframe" };
 

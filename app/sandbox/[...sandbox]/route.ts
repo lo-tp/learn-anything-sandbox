@@ -10,13 +10,15 @@
  * | `/sandbox/{slug}`            | the demo page HTML — **403 unless `Sec-Fetch-Dest: iframe`**, 404 on unknown slug |
  * | `/sandbox/{slug}/bundle.js`  | the row's `demo_js` — **no fetch-dest gate**: in a plain tab the JS source is inert text |
  *
- * While the `demo_js` schema columns are pending (#32/#37), the exact slug
- * `sample` is the hand-inserted demo: `core/sandbox/sample.tsx` is compiled
- * **per request** (same esbuild transform the write pipeline will run) and
- * served `no-store` — its source is editable, so immutability would be a
- * lie. Its page declares `parts: SAMPLE_PARTS` (one per slide), so the
- * harness clamps `DEMO_SET_PART` across the whole deck instead of the
- * stub's random 1–3.
+ * While the `demo_js` schema columns are pending (#32/#37), the hand-inserted
+ * demos are `sample` (the deck, `core/sandbox/sample.tsx`) and `sample_N`
+ * (`core/sandbox/sample_N.tsx` renders `sample/N.tsx` standalone — discovered
+ * on disk, so adding slide 6 is adding the two files). Their entries are
+ * compiled **per request** (same esbuild transform the write pipeline will
+ * run) with a short `max-age` — their source is editable, so immutability
+ * would be a lie. The deck's page declares `parts: SAMPLE_PARTS` (one per
+ * slide), so the harness clamps `DEMO_SET_PART` across the whole deck instead
+ * of the stub's random 1–3; a `sample_N` page declares `parts: 1`.
  *
  * The deploy-built artifacts and each row's bundle carry
  * `Cache-Control: public, max-age=31536000, immutable` — honest because the
@@ -37,7 +39,7 @@
  * emits its own into `<head>`; Next's React instance is also private to its
  * chunks. We therefore own the returned bytes.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { build } from "esbuild";
 import { getDemoBySlug } from "@/core/store";
@@ -54,6 +56,51 @@ const CORSA = { "Access-Control-Allow-Origin": "*" };
 
 /** Slide count of the hand-inserted sample deck (one part per slide). */
 const SAMPLE_PARTS = 5;
+
+/**
+ * The hand-inserted entry for a slug, or `null` when the slug is not one:
+ * `sample` is always the deck; `sample_N` resolves to
+ * `core/sandbox/sample_N.tsx` **only if that file exists on disk** (the
+ * pattern keeps arbitrary slugs from mapping into files).
+ */
+function sampleEntry(slug: string): string | null {
+  if (slug === "sample") return path.join("core", "sandbox", "sample.tsx");
+  if (!/^sample_\d+$/.test(slug)) return null;
+  const entry = path.join("core", "sandbox", `${slug}.tsx`);
+  return existsSync(path.join(process.cwd(), entry)) ? entry : null;
+}
+
+/**
+ * Compile a hand-inserted entry into the demo bundle. Bundled (not
+ * `transform`) because the entries import the per-slide components
+ * (sample/1.tsx … 5.tsx + shared.tsx). `react` is external so the bare
+ * imports survive for the demo page's import map to resolve.
+ */
+async function compileSampleEntry(entry: string): Promise<Response> {
+  try {
+    const result = await build({
+      entryPoints: [path.join(process.cwd(), entry)],
+      bundle: true,
+      write: false,
+      format: "esm",
+      target: "es2020",
+      jsx: "automatic",
+      minify: true,
+      define: { "process.env.NODE_ENV": '"production"' },
+      external: ["react", "react/jsx-runtime", "react-dom/client"],
+    });
+    const code = result.outputFiles[0].text;
+    return new Response(code, {
+      headers: { "Content-Type": JS, "Cache-Control": "public, max-age=3600", ...CORSA },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return new Response(`sample demo failed to compile: ${msg}`, {
+      status: 500,
+      headers: { ...CORSA },
+    });
+  }
+}
 
 /** Vendor modules we ship — the fixed set from scripts/build-sandbox.mjs. */
 const VENDOR_MODULES = [
@@ -139,35 +186,11 @@ export async function GET(
     return serveArtifact(`vendor/${second}`);
   }
 
-  // Hand-inserted demo (#37) — compiled at runtime, cached by the browser.
-  // Bundled (not `transform`) because the deck imports one component per
-  // slide (sample/1.tsx … 5.tsx + shared.tsx). `react` is external so the
-  // bare imports survive for the demo page's import map to resolve.
-  if (first === "sample" && second === "bundle.js") {
-    try {
-      const entry = path.join(process.cwd(), "core/sandbox/sample.tsx");
-      const result = await build({
-        entryPoints: [entry],
-        bundle: true,
-        write: false,
-        format: "esm",
-        target: "es2020",
-        jsx: "automatic",
-        minify: true,
-        define: { "process.env.NODE_ENV": '"production"' },
-        external: ["react", "react/jsx-runtime", "react-dom/client"],
-      });
-      const code = result.outputFiles[0].text;
-      return new Response(code, {
-        headers: { "Content-Type": JS, "Cache-Control": "public, max-age=3600", ...CORSA },
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return new Response(`sample demo failed to compile: ${msg}`, {
-        status: 500,
-        headers: { ...CORSA },
-      });
-    }
+  // Hand-inserted demos (#37) — compiled per request (editable source),
+  // short-lived cache: `sample` is the deck, `sample_N` one slide standalone.
+  if (second === "bundle.js") {
+    const entry = sampleEntry(first);
+    if (entry !== null) return compileSampleEntry(entry);
   }
 
   // Everything else is a slug: `{slug}/bundle.js` or the demo page itself.
@@ -194,10 +217,13 @@ export async function GET(
     if (request.headers.get("sec-fetch-dest") !== "iframe") {
       return new Response("forbidden", { status: 403 });
     }
-    // Hand-inserted demo (#37): the on-disk row declares one part per slide.
-    if (slug === "sample") {
+    // Hand-inserted demos (#37): the on-disk entry declares its parts —
+    // the deck has one per slide, a `sample_N` demo has exactly one.
+    const entry = sampleEntry(slug);
+    if (entry !== null) {
+      const parts = slug === "sample" ? SAMPLE_PARTS : 1;
       const origin = new URL(request.url).origin;
-      return new Response(sandboxPage(origin, slug, SAMPLE_PARTS), {
+      return new Response(sandboxPage(origin, slug, parts), {
         headers: {
           "Content-Type": "text/html; charset=utf-8",
           "Cache-Control": "no-store",

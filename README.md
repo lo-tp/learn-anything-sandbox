@@ -1,6 +1,6 @@
 # learn-anything-sandbox
 
-Development home for the **sandbox surface** of [`learn-anything`](https://github.com/lo-tp/learn-anything): the `/sandbox/*` delivery route (harness/vendor artifacts, per-request esbuild-compiled sample bundle, per-slug pages/bundles), the `/demo-sandbox` dev showcase host, the trusted harness + sample sources, and the sandbox build tooling.
+Development home for the **sandbox surface** of [`learn-anything`](https://github.com/lo-tp/learn-anything): the `/sandbox/*` delivery route (harness/vendor artifacts, per-request esbuild-compiled sample bundles — the `sample` deck plus one-slide `sample_N` demos, per-slug pages/bundles), the `/demo-sandbox` dev showcase host, the trusted harness + sample sources, and the sandbox build tooling.
 
 Provenance: extracted from `lo-tp/learn-anything`. Design lives in main's [`docs/demos.md`](https://github.com/lo-tp/learn-anything/blob/main/docs/demos.md) and [ADR 0007](https://github.com/lo-tp/learn-anything/blob/main/docs/adr/0007-demos-in-opaque-origin-sandbox.md); related issues [#32](https://github.com/lo-tp/learn-anything/issues/32), [#36](https://github.com/lo-tp/learn-anything/issues/36), [#37](https://github.com/lo-tp/learn-anything/issues/37).
 
@@ -13,6 +13,8 @@ npm install
 npm run dev
 # → http://localhost:3001/demo-sandbox
 ```
+
+`/demo-sandbox` hosts the hand-inserted demos: the `sample` deck and the single-slide `sample_N` routes, each `/sandbox/sample_N` rendering `core/sandbox/sample/N.tsx` standalone (compiled per request; adding slide 6 = adding `sample/6.tsx` + `sample_6.tsx`).
 
 `predev`/`prebuild`/`pretest` run `build:sandbox` (`node scripts/build-sandbox.mjs`), which esbuilds `out/sandbox/harness.js` + `out/sandbox/vendor/*.js`.
 
