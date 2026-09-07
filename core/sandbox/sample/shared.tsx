@@ -10,7 +10,6 @@ const cardStyle = (isActive: boolean): CSSProperties => ({
   background: 'rgba(20,25,55,0.65)',
   backdropFilter: 'blur(4px)',
   borderRadius: '30px',
-  padding: '40px 45px',
   boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06), 0 15px 35px rgba(0,0,0,0.5)',
   display: 'flex',
   flexDirection: 'column',

@@ -109,7 +109,6 @@ export default function DemoSandboxPage() {
         style={{
           width: "100%",
           height,
-          border: "1px solid #bbb",
           borderRadius: 6,
           background: "#fff",
           display: "block",
