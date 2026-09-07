@@ -39,7 +39,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { transform } from "esbuild";
+import { build } from "esbuild";
 import { getDemoBySlug } from "@/core/store";
 
 /** The demo page is rendered per request — it carries request-specific bytes. */
@@ -140,21 +140,24 @@ export async function GET(
   }
 
   // Hand-inserted demo (#37) — compiled at runtime, cached by the browser.
+  // Bundled (not `transform`) because the deck imports one component per
+  // slide (sample/1.tsx … 5.tsx + shared.tsx). `react` is external so the
+  // bare imports survive for the demo page's import map to resolve.
   if (first === "sample" && second === "bundle.js") {
     try {
-      const src = readFileSync(
-        path.join(process.cwd(), "core/sandbox/sample.tsx"),
-        "utf8",
-      );
-      const { code } = await transform(src, {
-        loader: "tsx",
+      const entry = path.join(process.cwd(), "core/sandbox/sample.tsx");
+      const result = await build({
+        entryPoints: [entry],
+        bundle: true,
+        write: false,
         format: "esm",
         target: "es2020",
         jsx: "automatic",
         minify: true,
         define: { "process.env.NODE_ENV": '"production"' },
-        sourcefile: "sample.tsx",
+        external: ["react", "react/jsx-runtime", "react-dom/client"],
       });
+      const code = result.outputFiles[0].text;
       return new Response(code, {
         headers: { "Content-Type": JS, "Cache-Control": "public, max-age=3600", ...CORSA },
       });
