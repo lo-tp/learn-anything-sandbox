@@ -154,6 +154,15 @@ describe("POST /api/compile", () => {
       expect(body.error).toBe("code must be a non-empty string");
     }
   });
+  it("400s a JSON body that is not an object", async () => {
+    for (const payload of [42, "str", null, [1], true]) {
+      const res = await post(payload);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code: string; error: string };
+      expect(body.code).toBe("");
+      expect(body.error).toBe("code must be a non-empty string");
+    }
+  });
 
   it("500s an uncompilable source", async () => {
     const res = await post({ code: "export default () => <div>" });

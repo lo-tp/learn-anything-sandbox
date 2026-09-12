@@ -7,7 +7,7 @@
  * `fetch`, so no network is needed — each case returns fixed TSX `content`
  * (with a marker string) or a specific backend status.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../../../../app/slides/[...slides]/route";
@@ -261,6 +261,60 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     // Source has two react-katex imports (prepended + the slide's own); with
     // bundle:true esbuild merges them into one — no duplicate-binding error.
     expect((body.match(/from"react-katex"/g) ?? []).length).toBe(1);
+  });
+
+  it("requests the backend with a URL-encoded slide id", async () => {
+    let requested: string | undefined;
+    vi.stubGlobal("fetch", (url: unknown) => {
+      requested = String(url);
+      return new Response(JSON.stringify({ slide_id: "s 1", content: tsx }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const res = await get("/slides/s 1/bundle.js");
+    expect(res.status).toBe(200);
+    expect(requested).toBe(`${BACKEND}/slides/s%201`);
+  });
+});
+
+describe("vendor content-type fallback", () => {
+  // Temp artifacts land in the gitignored, deploy-rebuilt out/ tree and are
+  // removed in `finally` — the route serves whatever bytes are on disk.
+  it("resolves the extension case-insensitively (.JS is served as JS)", async () => {
+    const rel = "case-check.JS";
+    const abs = path.join(process.cwd(), "out/slides/vendor", rel);
+    try {
+      writeFileSync(abs, "export {};\n");
+      const res = await get(`/slides/vendor/${rel}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    } finally {
+      rmSync(abs, { force: true });
+    }
+  });
+
+  it("falls back to application/octet-stream for unknown extensions", async () => {
+    const rel = "asset.bin";
+    const abs = path.join(process.cwd(), "out/slides/vendor", rel);
+    try {
+      writeFileSync(abs, "bytes");
+      const res = await get(`/slides/vendor/${rel}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    } finally {
+      rmSync(abs, { force: true });
+    }
+  });
+});
+
+describe("edge paths", () => {
+  it("treats /slides/vendor (no artifact path) as a slide page — 403 without the iframe header", async () => {
+    expect((await get("/slides/vendor")).status).toBe(403);
+  });
+
+  it("404s /slides/harness.js/extra (harness is only the exact file)", async () => {
+    expect((await get("/slides/harness.js/extra")).status).toBe(404);
   });
 });
 

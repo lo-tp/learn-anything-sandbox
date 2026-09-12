@@ -37,6 +37,15 @@ describe("frameAncestorsPolicy", () => {
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
+
+  it("skips protocol-relative (//host) entries too, one warning per bad entry", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(frameAncestorsPolicy("//example.com,localhost:3000,https://ok.dev")).toBe(
+      "frame-ancestors 'self' https://ok.dev",
+    );
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
+  });
 });
 
 describe("next.config.ts wiring", () => {

@@ -20,15 +20,11 @@
  */
 import React, { lazy, Suspense, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { clampPart } from "./clamp-part";
 
 /** Injected by the slide page (`window.DEMO`) before the harness module loads. */
 type DemoMeta = { slug: string; parts: number };
 const { slug, parts } = (window as unknown as { DEMO: DemoMeta }).DEMO;
-
-/** Clamp an untrusted `DEMO_SET_PART` value into `0..parts−1`. */
-function clampPart(part: number, parts: number): number {
-  return Math.min(Math.max(part, 0), parts - 1);
-}
 
 class Boundary extends React.Component<
   { onError: (error: unknown) => void; children: React.ReactNode },

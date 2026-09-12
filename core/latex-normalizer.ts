@@ -103,7 +103,9 @@ export function normalizeLatex(src: string): string {
     if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
       const tag = ts.isJsxElement(node) ? node.openingElement.tagName : node.tagName;
       // Only identifier tags qualify (BlockMath / InlineMath are identifiers).
-      if (!ts.isIdentifier(tag) || !MATH_TAGS.has(tag.text)) return;
+      // Note: no early return — children of non-math elements are still
+      // visited, so nested math components get normalized too.
+      if (ts.isIdentifier(tag) && MATH_TAGS.has(tag.text)) {
       const attrs = (
         ts.isJsxElement(node) ? node.openingElement.attributes : node.attributes
       ).properties;
@@ -122,6 +124,7 @@ export function normalizeLatex(src: string): string {
         }
         // math="…" (JSX attribute string) and math={expr} are left as-is.
       }
+      } // math-tag attributes
     }
     ts.forEachChild(node, visit);
   };
