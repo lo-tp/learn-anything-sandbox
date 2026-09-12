@@ -120,7 +120,6 @@ describe("POST /api/compile", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(res.headers.get("access-control-allow-origin")).toBe("*");
     const body = (await res.json()) as { code: string; error: string | null };
     expect(body.error).toBeNull();
     expect(body.code.length).toBeGreaterThan(0);

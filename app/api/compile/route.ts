@@ -14,8 +14,8 @@
  * | 500    | `{ code: "", error: <msg> }`   | esbuild failed to compile the source      |
  *
  * The response is computed per request from caller-supplied source, so it is
- * `no-store` and carries `Access-Control-Allow-Origin: *` (consistent with the
- * other computed routes). The endpoint is public, like the rest.
+ * `no-store`. The endpoint is public and same-origin — unlike the module-serving
+ * `/slides` and `/sandbox` routes, no CORS headers are needed.
  */
 import { build } from "esbuild";
 import { normalizeLatex } from "@/core/latex-normalizer";
@@ -23,16 +23,12 @@ import { normalizeLatex } from "@/core/latex-normalizer";
 /** Compiled per request from caller source — never cache. */
 export const dynamic = "force-dynamic";
 
-/** CORS, matching the other per-request computed routes. */
-const CORSA = { "Access-Control-Allow-Origin": "*" };
-
 function json(body: { code: string; error: string | null }, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
-      ...CORSA,
     },
   });
 }
