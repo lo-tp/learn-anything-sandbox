@@ -4,9 +4,9 @@ import { frameAncestorsPolicy } from "./core/frame-ancestors";
 const nextConfig: NextConfig = {
   /* config options here */
   // The /sandbox route compiles the hand-inserted sample demo with esbuild
-  // per request (#37). esbuild is a native package — it must be required
-  // at runtime, not bundled by Turbopack.
-  serverExternalPackages: ["esbuild"],
+  // per request (#37), and /api/compile normalizes LaTeX with the TypeScript
+  // compiler API — both are required at runtime, not bundled by Turbopack.
+  serverExternalPackages: ["esbuild", "typescript"],
 
   /**
    * Who may embed this app in an `<iframe>`: CSP `frame-ancestors` on
