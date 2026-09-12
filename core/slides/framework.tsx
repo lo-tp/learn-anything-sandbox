@@ -26,7 +26,7 @@ type DemoMeta = { slug: string; parts: number };
 const { slug, parts } = (window as unknown as { DEMO: DemoMeta }).DEMO;
 
 /** Clamp an untrusted `DEMO_SET_PART` value into `0..parts−1`. */
-export function clampPart(part: number, parts: number): number {
+function clampPart(part: number, parts: number): number {
   return Math.min(Math.max(part, 0), parts - 1);
 }
 
@@ -54,18 +54,15 @@ function postToParent(message: object) {
   parent.postMessage(message, "*");
 }
 
-/**
- * The harness body, exported for unit tests. Production wiring is at the
- * bottom of this module.
- */
-export interface SlidesAppProps {
+/** The harness body. Production wiring is at the bottom of this module. */
+interface SlidesAppProps {
   /** The lazy per-slide bundle (wired below to `/slides/{slug}/bundle.js`). */
   Demo: React.LazyExoticComponent<React.ComponentType<{ part: number }>>;
   /** Trusted stepper count from the page-injected `window.DEMO.parts`. */
   parts: number;
 }
 
-export function SlidesApp({ Demo, parts }: SlidesAppProps) {
+function SlidesApp({ Demo, parts }: SlidesAppProps) {
   const [part, setPart] = useState(0);
 
   useEffect(() => {
