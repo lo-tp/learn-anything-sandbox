@@ -130,6 +130,19 @@ await build({
   outfile: path.join(root, "out/sandbox/harness.js"),
 });
 
+// 5. slides/harness.js — the `/slides` harness (issue #1), from
+//    core/slides/framework.tsx. Same settings as the sandbox harness; it loads
+//    `/slides/{slug}/bundle.js` (the backend-compiled slide). The slides route
+//    reuses `out/sandbox/vendor/*` and `/sandbox/reset.css`, so no vendor or
+//    css is rebuilt here — only this parallel harness.
+await build({
+  ...shared,
+  jsx: "automatic",
+  external: ["react", "react/jsx-runtime", "react-dom/client"],
+  entryPoints: [path.join(root, "core/slides/framework.tsx")],
+  outfile: path.join(root, "out/slides/harness.js"),
+});
+
 console.log("out/sandbox/:");
 for (const f of [
   "vendor/react.js",
@@ -138,4 +151,9 @@ for (const f of [
   "harness.js",
 ]) {
   console.log(`  ${f}  ${statSync(path.join(root, "out/sandbox", f)).size} B`);
+}
+
+console.log("out/slides/:");
+for (const f of ["harness.js"]) {
+  console.log(`  ${f}  ${statSync(path.join(root, "out/slides", f)).size} B`);
 }

@@ -1,0 +1,168 @@
+/**
+ * Unit tests for the `/slides/*` route handlers (issue #1).
+ *
+ * The handler is exercised directly (same pattern as the `/sandbox` route
+ * tests): a synthetic `Request` plus the params the App Router would resolve.
+ * The backend (`NEXT_PUBLIC_BACKEND_URL`) is stubbed via a mocked global
+ * `fetch`, so no network is needed — each case returns fixed TSX `content`
+ * (with a marker string) or a specific backend status.
+ */
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { GET } from "../../../../app/slides/[...slides]/route";
+
+const IMMUTABLE = "public, max-age=31536000, immutable";
+const ORIGIN = "http://localhost:3000";
+const BACKEND = "http://backend.test";
+const MARKER = "SLIDE_MARKER_12345";
+
+function get(pathname: string, headers: Record<string, string> = {}) {
+  const slides = pathname.split("/").filter(Boolean); // ["slides", ...rest]
+  return GET(
+    new Request(`${ORIGIN}${pathname}`, { headers }),
+    { params: Promise.resolve({ slides: slides.slice(1) }) },
+  );
+}
+
+/** Stub the global `fetch` the route uses to talk to the backend. */
+function mockFetch(res: Response) {
+  vi.stubGlobal("fetch", () => res);
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("deploy-built slides harness", () => {
+  it("serves /slides/harness.js with immutable cache headers", async () => {
+    const res = await get("/slides/harness.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    const bytes = readFileSync(path.join(process.cwd(), "out/slides/harness.js"));
+    expect(await res.text()).toBe(bytes.toString("utf8"));
+  });
+});
+
+describe("the slide page (GET /slides/{id})", () => {
+  const IFRAME = { "sec-fetch-dest": "iframe" };
+
+  it("serves the import-map page to a sandboxed iframe, reusing sandbox vendor", async () => {
+    const res = await get("/slides/s1", IFRAME);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    // no-store: the page embeds the request's origin (per-request bytes).
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const html = await res.text();
+    // Import map precedes every module script and reuses the /sandbox vendor.
+    expect(html.indexOf('type="importmap"')).toBeGreaterThan(-1);
+    expect(html).toContain('"/sandbox/vendor/react.js"');
+    expect(html).toContain('"/sandbox/vendor/react-jsx-runtime.js"');
+    expect(html).toContain('"/sandbox/vendor/react-dom-client.js"');
+    // The page we own: root div, demo meta (single part), slides harness boot.
+    expect(html).toContain("<div id=\"root\"></div>");
+    expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
+    expect(html).toContain(`<script type="module" src="/slides/harness.js"></script>`);
+    // reset.css is reused from the /sandbox surface (the link only).
+    expect(html).toContain(`${ORIGIN}/sandbox/reset.css`);
+  });
+
+  it("403s a top-level tab (Sec-Fetch-Dest: document)", async () => {
+    expect((await get("/slides/s1", { "sec-fetch-dest": "document" })).status).toBe(403);
+  });
+
+  it("403s a request with no Sec-Fetch-Dest at all", async () => {
+    expect((await get("/slides/s1")).status).toBe(403);
+  });
+});
+
+describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
+  const tsx = `export default function Slide() { return <div>${MARKER}</div>; }`;
+
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_BACKEND_URL = BACKEND;
+  });
+
+  it("compiles the backend TSX per request (no-store, marker survives)", async () => {
+    mockFetch(
+      new Response(JSON.stringify({ slide_id: "s1", content: tsx }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    // no-store: the bundle is compiled per request from backend content.
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    const body = await res.text();
+    // TSX/JSX is gone — plain ESM, `react` left bare; the content survives.
+    expect(body).not.toContain("<div>");
+    expect(body).toContain("react");
+    expect(body).toContain(MARKER);
+  });
+
+  it("404s when the backend has no such slide", async () => {
+    mockFetch(new Response(null, { status: 404 }));
+    expect((await get("/slides/missing/bundle.js")).status).toBe(404);
+  });
+
+  it("502s on a backend 500", async () => {
+    mockFetch(new Response(null, { status: 500 }));
+    expect((await get("/slides/s1/bundle.js")).status).toBe(502);
+  });
+
+  it("502s on a backend 503", async () => {
+    mockFetch(new Response(null, { status: 503 }));
+    expect((await get("/slides/s1/bundle.js")).status).toBe(502);
+  });
+
+  it("502s when the backend omits `content`", async () => {
+    mockFetch(
+      new Response(JSON.stringify({ slide_id: "s1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect((await get("/slides/s1/bundle.js")).status).toBe(502);
+  });
+
+  it("502s when `content` is not a string", async () => {
+    mockFetch(
+      new Response(JSON.stringify({ slide_id: "s1", content: 42 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    expect((await get("/slides/s1/bundle.js")).status).toBe(502);
+  });
+
+  it("502s when the backend is unreachable", async () => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("boom");
+    });
+    expect((await get("/slides/s1/bundle.js")).status).toBe(502);
+  });
+
+  it("500s when the backend TSX fails to compile", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({ slide_id: "s1", content: "export default function Broken() { return <<<" }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    expect((await get("/slides/s1/bundle.js")).status).toBe(500);
+  });
+
+  it("500s when NEXT_PUBLIC_BACKEND_URL is not set", async () => {
+    delete process.env.NEXT_PUBLIC_BACKEND_URL;
+    expect((await get("/slides/s1/bundle.js")).status).toBe(500);
+  });
+});
+
+describe("everything else", () => {
+  it("404s deeper paths", async () => {
+    expect((await get("/slides/s1/bundle.js/extra")).status).toBe(404);
+  });
+});
