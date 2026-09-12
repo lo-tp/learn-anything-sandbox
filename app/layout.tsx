@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export const metadata = { title: "learn-anything-sandbox" };
+export const metadata = { title: "learn-anything" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

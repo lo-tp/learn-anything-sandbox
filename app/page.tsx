@@ -7,12 +7,9 @@ export default function Home() {
         maxWidth: 640,
       }}
     >
-      <h1>learn-anything-sandbox</h1>
+      <h1>learn-anything</h1>
       <p>
-        Development home for the <code>learn-anything</code> sandbox surface.
-      </p>
-      <p>
-        <a href="/demo-sandbox">/demo-sandbox</a> — sample demo showcase host.
+        Development home for the <code>learn-anything</code> slide demos.
       </p>
     </main>
   );

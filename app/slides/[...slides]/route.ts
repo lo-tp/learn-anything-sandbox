@@ -1,31 +1,32 @@
 /**
  * `/slides/*` — the backend-fed slide demos (issue #1).
  *
- * Structurally a mirror of `/sandbox/*`, except the React bundle is **fetched
- * from the backend** (`${NEXT_PUBLIC_BACKEND_URL}/slides/{slide_id}` → JSON
- * `{ slide_id, content }`, `content` is self-contained TSX) and **compiled per
- * request** with esbuild (react external) — the same transform the `sample_N`
- * path uses. The harness is a parallel build (`out/slides/harness.js`, from
- * `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
- * Vendor React and reset.css are **reused** from the `/sandbox` surface (one
- * React instance). The KaTeX vendor (`react-katex`/`katex`/css/fonts) is built
- * into `out/slides/vendor/` and served under `/slides/vendor/*` so the page's
- * import map can route `react-katex`/`katex` to it.
+ * The React bundle is **fetched from the backend**
+ * (`${NEXT_PUBLIC_BACKEND_URL}/slides/{slide_id}` → JSON `{ slide_id, content }`,
+ * `content` is self-contained TSX) and **compiled per request** with esbuild
+ * (react external). The harness is a deploy build (`out/slides/harness.js`,
+ * from `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
+ * All vendor artifacts (React, KaTeX) are built into `out/slides/vendor/` and
+ * served under `/slides/vendor/*` so the page's import map can route
+ * `react`/`react-katex`/`katex` to them.
  *
- * | URL                            | Response                                                     |
- * |--------------------------------|--------------------------------------------------------------|
- * | `/slides/harness.js`           | the deploy-built slides harness (`out/slides/harness.js`)     |
- * | `/slides/{slide_id}`           | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
- * | `/slides/{slide_id}/bundle.js` | backend-fetched + compiled slide — **no fetch-dest gate**      |
- * | `/slides/vendor/react-katex.js`| the deploy-built KaTeX React components (`out/slides/vendor/…`) |
- * | `/slides/vendor/katex.js`      | the deploy-built KaTeX engine                                    |
- * | `/slides/vendor/katex.css`     | the KaTeX stylesheet (+ `/slides/vendor/fonts/…` webfonts)      |
+ * | URL                               | Response                                                     |
+ * |-----------------------------------|--------------------------------------------------------------|
+ * | `/slides/harness.js`              | the deploy-built slides harness (`out/slides/harness.js`)     |
+ * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
+ * | `/slides/{slide_id}/bundle.js`    | backend-fetched + compiled slide — **no fetch-dest gate**      |
+ * | `/slides/vendor/react.js`         | the deploy-built React (self-contained ESM)                  |
+ * | `/slides/vendor/react-jsx-runtime.js` | the deploy-built JSX runtime (`react` external)         |
+ * | `/slides/vendor/react-dom-client.js`  | the deploy-built React DOM client (`react` external)   |
+ * | `/slides/vendor/react-katex.js`   | the deploy-built KaTeX React components (`out/slides/vendor/…`) |
+ * | `/slides/vendor/katex.js`         | the deploy-built KaTeX engine                                    |
+ * | `/slides/vendor/katex.css`        | the KaTeX stylesheet (+ `/slides/vendor/fonts/…` webfonts)      |
  *
  * Every response carries `Access-Control-Allow-Origin: *`: the opaque-origin
- * iframe loads its module scripts (harness, bundle — and the reused sandbox
- * vendor) in **CORS mode**, so without the header the module graph fails to
- * load outright. The harness is `immutable` (built at deploy); the slide page
- * and bundle are `no-store` (per-request origin / backend content).
+ * iframe loads its module scripts in **CORS mode**, so without the header the
+ * module graph fails to load outright. The harness and vendor are `immutable`
+ * (built at deploy); the slide page and bundle are `no-store` (per-request
+ * origin / backend content).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -38,7 +39,7 @@ export const dynamic = "force-dynamic";
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const JS = "text/javascript; charset=utf-8";
 
-/** Shared by every response — CORS for the opaque-origin sandbox. */
+/** Shared by every response — CORS for the opaque-origin iframe. */
 const CORSA = { "Access-Control-Allow-Origin": "*" };
 
 /**
@@ -47,7 +48,7 @@ const CORSA = { "Access-Control-Allow-Origin": "*" };
  * `content` is assumed self-contained TSX with only `react`/`react-dom`/
  * `react-katex`/`katex` bare imports (all external, resolved by the page's
  * import map). esbuild can't resolve relative file imports from a backend
- * blob, so those fail (500), matching `compileSampleEntry`'s failure behavior.
+ * blob, so those fail (500).
  */
 async function compileSlide(slideId: string): Promise<Response> {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -128,19 +129,19 @@ function serveSlidesHarness(): Response {
       },
     });
   } catch {
-    return new Response("artifact not built — run npm run build:sandbox", {
+    return new Response("artifact not built — run npm run build:vendor", {
       status: 404,
     });
   }
 }
 
 /**
- * A deploy-built KaTeX vendor artifact (`out/slides/vendor/<rest>`), served
- * under `/slides/vendor/*` (NOT `public/`) so the slide page's import map —
- * which always serves `/slides/*` through this handler — can route `react-katex`
- * and `katex` to it, mirroring how `/sandbox/vendor/*` works. The bytes are
- * byte-identical to `node_modules/katex/dist` and never change per request, so
- * they are `immutable`. `rest` is joined after resolving (traversal guard).
+ * A deploy-built vendor artifact (`out/slides/vendor/<rest>`), served under
+ * `/slides/vendor/*` (NOT `public/`) so the slide page's import map — which
+ * always serves `/slides/*` through this handler — can route `react`,
+ * `react-katex`, and `katex` to it. The bytes are deploy-built and never
+ * change per request, so they are `immutable`. `rest` is joined after
+ * resolving (traversal guard).
  */
 function serveSlidesVendor(rest: string[]): Response {
   const rel = path.posix.join(...rest);
@@ -160,7 +161,7 @@ function serveSlidesVendor(rest: string[]): Response {
       },
     });
   } catch {
-    return new Response("artifact not built — run npm run build:sandbox", {
+    return new Response("artifact not built — run npm run build:vendor", {
       status: 404,
     });
   }
@@ -185,9 +186,8 @@ function contentTypeFor(file: string): string {
 }
 
 /**
- * The slide page, byte-for-byte ours. Reuses the `/sandbox` vendor React and
- * reset.css (one React instance); only the harness and bundle are the
- * `/slides` variants.
+ * The slide page, byte-for-byte ours. All vendor artifacts (React, KaTeX)
+ * are served from `/slides/vendor/*` (one React instance).
  */
 function slidesPage(origin: string, slideId: string): string {
   return `<!DOCTYPE html>
@@ -196,14 +196,14 @@ function slidesPage(origin: string, slideId: string): string {
 <meta charset="utf-8">
 <script type="importmap">
 { "imports": {
-    "react": "/sandbox/vendor/react.js",
-    "react/jsx-runtime": "/sandbox/vendor/react-jsx-runtime.js",
-    "react-dom/client": "/sandbox/vendor/react-dom-client.js",
+    "react": "/slides/vendor/react.js",
+    "react/jsx-runtime": "/slides/vendor/react-jsx-runtime.js",
+    "react-dom/client": "/slides/vendor/react-dom-client.js",
     "react-katex": "/slides/vendor/react-katex.js",
     "katex": "/slides/vendor/katex.js"
 } }
 </script>
-<link rel="stylesheet" href="${origin}/sandbox/reset.css">
+<link rel="stylesheet" href="${origin}/slides/reset.css">
 <link rel="stylesheet" href="${origin}/slides/vendor/katex.css">
 </head>
 <body>

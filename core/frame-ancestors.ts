@@ -7,8 +7,7 @@
  * with scheme, e.g. `http://localhost:3000,https://learn-anything.dev`.
  *
  * Fail-secure: unset or empty → `'self'` only, i.e. nobody else can frame
- * us. `'self'` is always kept — the `/demo-sandbox` showcase frames this
- * app's own `/sandbox` route, and same-origin framing must keep working.
+ * us. `'self'` is always kept — same-origin framing must keep working.
  */
 
 /** A frame-ancestors source: a scheme, then `://` (host, optional port). */

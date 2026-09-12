@@ -1,19 +1,16 @@
 /**
  * `core/slides/framework.tsx` — the `/slides` harness (issue #1).
  *
- * The `/slides` variant of `core/sandbox/framework.tsx`: identical loading,
- * error-boundary, part-clamping, and auto-height behavior; the only change is
- * the per-slide bundle it loads — `/slides/{slug}/bundle.js` (the
- * backend-fetched, per-request compiled slide) instead of the sandbox row's
- * `/sandbox/{slug}/bundle.js`. Vendor React and reset.css are reused from the
- * `/sandbox` surface (one React instance); only this harness is a new parallel
- * build (`out/slides/harness.js`).
+ * Loads the per-slide bundle `/slides/{slug}/bundle.js` (the
+ * backend-fetched, per-request compiled slide). Vendor React is served from
+ * the `/slides` surface (one React instance); this harness is a deploy build
+ * (`out/slides/harness.js`).
  *
- * The trust rules are the sandbox's: `window.DEMO` comes from the page we own
- * (trusted); everything else is the untrusted per-slide bundle, which is only
- * ever *rendered* by this app — never given a second program of its own.
+ * The trust rules: `window.DEMO` comes from the page we own (trusted);
+ * everything else is the untrusted per-slide bundle, which is only ever
+ * *rendered* by this app — never given a second program of its own.
  *
- * Cross-boundary surface (same as the sandbox harness):
+ * Cross-boundary surface:
  *
  * | direction        | message              | here |
  * |------------------|----------------------|------|
@@ -75,7 +72,7 @@ export function SlidesApp({ Demo, parts }: SlidesAppProps) {
     const onMessage = (event: MessageEvent) => {
       const data = event.data as { type?: unknown; part?: unknown } | null;
       if (data?.type === "DEMO_SET_PART" && Number.isInteger(data.part)) {
-        // Clamp, never trust: the sandbox is the boundary, this is the seam.
+        // Clamp, never trust: the harness is the boundary, this is the seam.
         setPart(clampPart(data.part as number, parts));
       }
     };

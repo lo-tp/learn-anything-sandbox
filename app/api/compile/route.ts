@@ -4,8 +4,8 @@
  * Accepts a JSON body `{ code: <source JSX/TSX> }`, normalizes the KaTeX
  * expressions it carries (see `core/latex-normalizer.ts`), compiles the result
  * to minified ESM with esbuild (react external — the same transform the
- * `/slides/{id}/bundle.js` and `/sandbox/{slug}/bundle.js` routes use), and
- * returns a JSON `{ code, error }` object.
+ * `/slides/{id}/bundle.js` route uses), and returns a JSON `{ code, error }`
+ * object.
  *
  * | status | body                          | when                                        |
  * |--------|-------------------------------|-------------------------------------------|
@@ -15,7 +15,7 @@
  *
  * The response is computed per request from caller-supplied source, so it is
  * `no-store`. The endpoint is public and same-origin — unlike the module-serving
- * `/slides` and `/sandbox` routes, no CORS headers are needed.
+ * `/slides` route, no CORS headers are needed.
  */
 import { build } from "esbuild";
 import { normalizeLatex } from "@/core/latex-normalizer";
@@ -36,7 +36,7 @@ function json(body: { code: string; error: string | null }, status: number): Res
 /**
  * Compile a caller-supplied TSX module into minified ESM. The source is
  * assumed self-contained with only `react`/`react-dom`/`react-katex`/`katex`
- * bare imports (all external), mirroring the slide/sample compile.
+ * bare imports (all external), mirroring the slide compile.
  */
 export async function POST(request: Request): Promise<Response> {
   let data: unknown;

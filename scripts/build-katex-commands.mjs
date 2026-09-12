@@ -7,7 +7,7 @@
  * The whitelist is the union of katex's *named control words* — the keys of
  * its `functions`, `macros`, and `symbols` (math + text) registries — filtered
  * to keys of the form *backslash + one or more ASCII letters*. It is regenerated on every
- * build (see package.json `build:sandbox`), so the normalizer tracks the
+ * build (see package.json `build:vendor`), so the normalizer tracks the
  * installed katex version instead of a hand-maintained list.
  *
  * The output records the katex version it was derived from; a test asserts

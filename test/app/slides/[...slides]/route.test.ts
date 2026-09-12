@@ -1,8 +1,8 @@
 /**
  * Unit tests for the `/slides/*` route handlers (issue #1).
  *
- * The handler is exercised directly (same pattern as the `/sandbox` route
- * tests): a synthetic `Request` plus the params the App Router would resolve.
+ * The handler is exercised directly: a synthetic `Request` plus the params
+ * the App Router would resolve.
  * The backend (`NEXT_PUBLIC_BACKEND_URL`) is stubbed via a mocked global
  * `fetch`, so no network is needed — each case returns fixed TSX `content`
  * (with a marker string) or a specific backend status.
@@ -90,27 +90,26 @@ describe("the KaTeX vendor (GET /slides/vendor/...)", () => {
 describe("the slide page (GET /slides/{id})", () => {
   const IFRAME = { "sec-fetch-dest": "iframe" };
 
-  it("serves the import-map page to a sandboxed iframe, reusing sandbox vendor", async () => {
+  it("serves the import-map page to a sandboxed iframe", async () => {
     const res = await get("/slides/s1", IFRAME);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     // no-store: the page embeds the request's origin (per-request bytes).
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
-    // Import map precedes every module script and reuses the /sandbox vendor.
+    // Import map precedes every module script; all vendor from /slides.
     expect(html.indexOf('type="importmap"')).toBeGreaterThan(-1);
-    expect(html).toContain('"/sandbox/vendor/react.js"');
-    expect(html).toContain('"/sandbox/vendor/react-jsx-runtime.js"');
-    expect(html).toContain('"/sandbox/vendor/react-dom-client.js"');
-    // KaTeX is routed to the /slides vendor (react-katex + katex).
+    expect(html).toContain('"/slides/vendor/react.js"');
+    expect(html).toContain('"/slides/vendor/react-jsx-runtime.js"');
+    expect(html).toContain('"/slides/vendor/react-dom-client.js"');
     expect(html).toContain('"/slides/vendor/react-katex.js"');
     expect(html).toContain('"/slides/vendor/katex.js"');
     // The page we own: root div, demo meta (single part), slides harness boot.
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
     expect(html).toContain(`<script type="module" src="/slides/harness.js"></script>`);
-    // reset.css is reused from the /sandbox surface (the link only).
-    expect(html).toContain(`${ORIGIN}/sandbox/reset.css`);
+    // reset.css is served from the /slides surface (the link only).
+    expect(html).toContain(`${ORIGIN}/slides/reset.css`);
     // The KaTeX stylesheet (link) is served from the /slides vendor surface.
     expect(html).toContain(`${ORIGIN}/slides/vendor/katex.css`);
   });

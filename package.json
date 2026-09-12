@@ -1,5 +1,5 @@
 {
-  "name": "learn-anything-sandbox",
+  "name": "learn-anything",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,10 +12,10 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "prepare": "husky",
     "build:katex": "node scripts/build-katex-commands.mjs",
-    "build:sandbox": "npm run build:katex && node scripts/build-sandbox.mjs",
-    "pretest": "npm run build:sandbox",
-    "predev": "npm run build:sandbox",
-    "prebuild": "npm run build:sandbox"
+    "build:vendor": "npm run build:katex && node scripts/build-sandbox.mjs",
+    "pretest": "npm run build:vendor",
+    "predev": "npm run build:vendor",
+    "prebuild": "npm run build:vendor"
   },
   "dependencies": {
     "esbuild": "^0.28.2",

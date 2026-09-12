@@ -1,5 +1,5 @@
-/* Minimal reset + canvas for the sandbox demo page (served at
- * /sandbox/reset.css). The demo page is opaque-origin and app-owned; the
+/* Minimal reset + canvas for the slide demo page (served at
+ * /slides/reset.css). The slide page is opaque-origin and app-owned; the
  * LLM bundle receives this canvas and styles everything else itself.
  * Background-agnostic by design: no palette is imposed, so each demo
  * carries its own background, colors, and card styling.
