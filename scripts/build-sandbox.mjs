@@ -2,12 +2,16 @@
 /**
  * build:sandbox — the deploy-time esbuild step (docs/demos.md, "Pipeline — DEPLOY").
  *
- * Produces the four immutable sandbox artifacts in `out/sandbox/` (gitignored):
+ * Produces the immutable deploy artifacts under `out/` (gitignored):
  *
- *   vendor/react.js            self-contained ESM of `node_modules/react`
- *   vendor/react-jsx-runtime.js ESM facade, `react` external
- *   vendor/react-dom-client.js ESM facade, `react` external, `scheduler` bundled in
- *   harness.js                 from `core/sandbox/framework.tsx`, all react specifiers external
+ *   out/sandbox/vendor/react.js            self-contained ESM of `node_modules/react`
+ *   out/sandbox/vendor/react-jsx-runtime.js ESM facade, `react` external
+ *   out/sandbox/vendor/react-dom-client.js ESM facade, `react` external, `scheduler` bundled in
+ *   out/sandbox/harness.js                 from `core/sandbox/framework.tsx`, react external
+ *   out/slides/harness.js                  from `core/slides/framework.tsx`, react external
+ *   out/slides/vendor/katex.js             self-contained ESM of `node_modules/katex`
+ *   out/slides/vendor/react-katex.js       ESM facade, `react` + `katex` external (KaTeX components)
+ *   out/slides/vendor/katex.css            KaTeX stylesheet (+ `fonts/` dir)
  *
  * The demo page's import map routes bare `react` / `react/jsx-runtime` /
  * `react-dom/client` to these files and the browser's module cache makes
@@ -24,7 +28,7 @@
 import { build } from "esbuild";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { statSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -77,6 +81,21 @@ const facade = (pkgFile, pkgId, withDefault = false) => {
 const requireBanner = [
   `import * as __ext_react from "react";`,
   `var require = (id) => (id === "react" ? __ext_react : (() => { throw new Error('Dynamic require of "' + id + '" is not supported'); })());`,
+].join("\n");
+
+/**
+ * Banner for the slides vendor builds, where the externals are `react`,
+ * `katex`, and (for the jsx-runtime seam) `react/jsx-runtime`. Same idea as
+ * `requireBanner`: esbuild emits a runtime `__require` shim for a CJS
+ * `require()` of an external that throws in the browser, so declare an in-scope
+ * `require` backed by static imports — `require("react")`/`require("katex")`
+ * then resolve through the slide page's import map to the vendored modules.
+ */
+const slidesVendorBanner = [
+  `import * as __ext_react from "react";`,
+  `import * as __ext_katex from "katex";`,
+  `import * as __ext_jsxrt from "react/jsx-runtime";`,
+  `var require = (id) => ({ "react": __ext_react, "katex": __ext_katex, "react/jsx-runtime": __ext_jsxrt }[id] ?? (() => { throw new Error('Dynamic require of "' + id + '" is not supported'); })());`,
 ].join("\n");
 
 // 1. vendor/react.js — self-contained: React's whole production CJS inlined.
@@ -143,6 +162,47 @@ await build({
   outfile: path.join(root, "out/slides/harness.js"),
 });
 
+// 6. slides/vendor/katex.js — self-contained ESM of `node_modules/katex`.
+//    Facade (named + default) so both `import katex from "katex"` (used by
+//    react-katex) and named imports resolve. No externals: katex is
+//    self-contained (its CLI-only `commander` dep is not in this entry).
+await build({
+  ...shared,
+  stdin: { contents: facade(path.join(nm, "katex/dist/katex.js"), "katex", true), resolveDir: root },
+  outfile: path.join(root, "out/slides/vendor/katex.js"),
+});
+
+// 7. slides/vendor/react-katex.js — the KaTeX React components. react-katex is
+//    CJS/UMD with getter-based named exports, so bundle it via a named-import
+//    facade (like the React vendor): esbuild only emits `export default` for a
+//    CJS entry, so re-export `BlockMath`/`InlineMath` by name. `react` and
+//    `katex` are external (the slide page's import map resolves them to the one
+//    shared React/KaTeX); `prop-types` is bundled in (tiny, self-contained).
+await build({
+  ...shared,
+  external: ["react", "react/jsx-runtime", "katex"],
+  banner: {
+    js: slidesVendorBanner,
+  },
+  stdin: {
+    contents: [
+      `import { BlockMath, InlineMath } from "${path.join(nm, "react-katex/dist/react-katex.js")}";`,
+      `export { BlockMath, InlineMath };`,
+    ].join("\n"),
+    resolveDir: root,
+  },
+  outfile: path.join(root, "out/slides/vendor/react-katex.js"),
+});
+
+// 8. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
+//    The CSS references `url(fonts/...)` relative to itself, so the fonts must
+//    sit in `out/slides/vendor/fonts/` to match `/slides/vendor/katex.css`.
+mkdirSync(path.join(root, "out/slides/vendor/fonts"), { recursive: true });
+copyFileSync(path.join(nm, "katex/dist/katex.min.css"), path.join(root, "out/slides/vendor/katex.css"));
+for (const font of readdirSync(path.join(nm, "katex/dist/fonts"))) {
+  copyFileSync(path.join(nm, "katex/dist/fonts", font), path.join(root, "out/slides/vendor/fonts", font));
+}
+
 console.log("out/sandbox/:");
 for (const f of [
   "vendor/react.js",
@@ -154,6 +214,7 @@ for (const f of [
 }
 
 console.log("out/slides/:");
-for (const f of ["harness.js"]) {
+for (const f of ["harness.js", "vendor/katex.js", "vendor/react-katex.js", "vendor/katex.css"]) {
   console.log(`  ${f}  ${statSync(path.join(root, "out/slides", f)).size} B`);
 }
+console.log(`  vendor/fonts/  ${readdirSync(path.join(root, "out/slides/vendor/fonts")).length} files`);

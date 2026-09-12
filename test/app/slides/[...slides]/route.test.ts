@@ -45,6 +45,48 @@ describe("deploy-built slides harness", () => {
   });
 });
 
+describe("the KaTeX vendor (GET /slides/vendor/...)", () => {
+  it("serves react-katex.js as JS, immutable, with CORS", async () => {
+    const res = await get("/slides/vendor/react-katex.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const bytes = readFileSync(path.join(process.cwd(), "out/slides/vendor/react-katex.js"));
+    expect(await res.text()).toBe(bytes.toString("utf8"));
+  });
+
+  it("serves katex.js as JS, immutable", async () => {
+    const res = await get("/slides/vendor/katex.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+  });
+
+  it("serves katex.css as CSS (referencing its co-located fonts/), immutable", async () => {
+    const res = await get("/slides/vendor/katex.css");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/css");
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    expect(await res.text()).toContain("fonts/");
+  });
+
+  it("serves webfonts with the right content-type", async () => {
+    expect((await get("/slides/vendor/fonts/KaTeX_AMS-Regular.woff2")).headers.get("content-type")).toBe("font/woff2");
+    expect((await get("/slides/vendor/fonts/KaTeX_AMS-Regular.woff")).headers.get("content-type")).toBe("font/woff");
+    expect((await get("/slides/vendor/fonts/KaTeX_AMS-Regular.ttf")).headers.get("content-type")).toBe("font/ttf");
+  });
+
+  it("404s a missing vendor file", async () => {
+    expect((await get("/slides/vendor/nope.js")).status).toBe(404);
+  });
+
+  it("404s path traversal out of the vendor dir", async () => {
+    expect((await get("/slides/vendor/../../package.json")).status).toBe(404);
+    expect((await get("/slides/vendor/..%2F..%2Fpackage.json")).status).toBe(404);
+  });
+});
+
 describe("the slide page (GET /slides/{id})", () => {
   const IFRAME = { "sec-fetch-dest": "iframe" };
 
@@ -60,12 +102,17 @@ describe("the slide page (GET /slides/{id})", () => {
     expect(html).toContain('"/sandbox/vendor/react.js"');
     expect(html).toContain('"/sandbox/vendor/react-jsx-runtime.js"');
     expect(html).toContain('"/sandbox/vendor/react-dom-client.js"');
+    // KaTeX is routed to the /slides vendor (react-katex + katex).
+    expect(html).toContain('"/slides/vendor/react-katex.js"');
+    expect(html).toContain('"/slides/vendor/katex.js"');
     // The page we own: root div, demo meta (single part), slides harness boot.
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
     expect(html).toContain(`<script type="module" src="/slides/harness.js"></script>`);
     // reset.css is reused from the /sandbox surface (the link only).
     expect(html).toContain(`${ORIGIN}/sandbox/reset.css`);
+    // The KaTeX stylesheet (link) is served from the /slides vendor surface.
+    expect(html).toContain(`${ORIGIN}/slides/vendor/katex.css`);
   });
 
   it("403s a top-level tab (Sec-Fetch-Dest: document)", async () => {
@@ -158,6 +205,25 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
   it("500s when NEXT_PUBLIC_BACKEND_URL is not set", async () => {
     delete process.env.NEXT_PUBLIC_BACKEND_URL;
     expect((await get("/slides/s1/bundle.js")).status).toBe(500);
+  });
+
+  it("leaves react-katex/katex bare when the slide imports them (import map resolves them)", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          slide_id: "s1",
+          content: `import { BlockMath } from "react-katex";\nexport default function S() { return <BlockMath math={"E = mc^2"} />; }`,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // react-katex is external → left as a bare import specifier for the import map.
+    expect(body).toContain('from"react-katex"');
+    // JSX is compiled away (no raw <BlockMath> markup in the bundle).
+    expect(body).not.toContain("<BlockMath");
   });
 });
 

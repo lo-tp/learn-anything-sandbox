@@ -8,13 +8,18 @@
  * path uses. The harness is a parallel build (`out/slides/harness.js`, from
  * `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
  * Vendor React and reset.css are **reused** from the `/sandbox` surface (one
- * React instance); only the harness is new.
+ * React instance). The KaTeX vendor (`react-katex`/`katex`/css/fonts) is built
+ * into `out/slides/vendor/` and served under `/slides/vendor/*` so the page's
+ * import map can route `react-katex`/`katex` to it.
  *
  * | URL                            | Response                                                     |
  * |--------------------------------|--------------------------------------------------------------|
  * | `/slides/harness.js`           | the deploy-built slides harness (`out/slides/harness.js`)     |
  * | `/slides/{slide_id}`           | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
  * | `/slides/{slide_id}/bundle.js` | backend-fetched + compiled slide — **no fetch-dest gate**      |
+ * | `/slides/vendor/react-katex.js`| the deploy-built KaTeX React components (`out/slides/vendor/…`) |
+ * | `/slides/vendor/katex.js`      | the deploy-built KaTeX engine                                    |
+ * | `/slides/vendor/katex.css`     | the KaTeX stylesheet (+ `/slides/vendor/fonts/…` webfonts)      |
  *
  * Every response carries `Access-Control-Allow-Origin: *`: the opaque-origin
  * iframe loads its module scripts (harness, bundle — and the reused sandbox
@@ -39,9 +44,10 @@ const CORSA = { "Access-Control-Allow-Origin": "*" };
 /**
  * Fetch a slide's TSX from the backend and compile it into the demo bundle.
  *
- * `content` is assumed self-contained TSX with only `react`/`react-dom` bare
- * imports — esbuild can't resolve relative file imports from a backend blob, so
- * those fail (500), matching `compileSampleEntry`'s failure behavior.
+ * `content` is assumed self-contained TSX with only `react`/`react-dom`/
+ * `react-katex`/`katex` bare imports (all external, resolved by the page's
+ * import map). esbuild can't resolve relative file imports from a backend
+ * blob, so those fail (500), matching `compileSampleEntry`'s failure behavior.
  */
 async function compileSlide(slideId: string): Promise<Response> {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -89,7 +95,7 @@ async function compileSlide(slideId: string): Promise<Response> {
       jsx: "automatic",
       minify: true,
       define: { "process.env.NODE_ENV": '"production"' },
-      external: ["react", "react/jsx-runtime", "react-dom/client"],
+      external: ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex"],
     });
     const code = result.outputFiles[0].text;
     return new Response(code, {
@@ -123,6 +129,56 @@ function serveSlidesHarness(): Response {
 }
 
 /**
+ * A deploy-built KaTeX vendor artifact (`out/slides/vendor/<rest>`), served
+ * under `/slides/vendor/*` (NOT `public/`) so the slide page's import map —
+ * which always serves `/slides/*` through this handler — can route `react-katex`
+ * and `katex` to it, mirroring how `/sandbox/vendor/*` works. The bytes are
+ * byte-identical to `node_modules/katex/dist` and never change per request, so
+ * they are `immutable`. `rest` is joined after resolving (traversal guard).
+ */
+function serveSlidesVendor(rest: string[]): Response {
+  const rel = path.posix.join(...rest);
+  const vendorDir = path.resolve(process.cwd(), "out/slides/vendor");
+  const abs = path.resolve(vendorDir, rel);
+  // Traversal guard: the resolved path must stay inside out/slides/vendor.
+  if (abs !== vendorDir && !abs.startsWith(vendorDir + path.sep)) {
+    return new Response("not found", { status: 404 });
+  }
+  try {
+    const bytes = readFileSync(abs);
+    return new Response(bytes, {
+      headers: {
+        "Content-Type": contentTypeFor(abs),
+        "Cache-Control": IMMUTABLE,
+        ...CORSA,
+      },
+    });
+  } catch {
+    return new Response("artifact not built — run npm run build:sandbox", {
+      status: 404,
+    });
+  }
+}
+
+/** Content-Type for a served vendor artifact, by extension. */
+function contentTypeFor(file: string): string {
+  switch (path.extname(file).toLowerCase()) {
+    case ".js":
+      return JS;
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".woff":
+      return "font/woff";
+    case ".woff2":
+      return "font/woff2";
+    case ".ttf":
+      return "font/ttf";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+/**
  * The slide page, byte-for-byte ours. Reuses the `/sandbox` vendor React and
  * reset.css (one React instance); only the harness and bundle are the
  * `/slides` variants.
@@ -136,10 +192,13 @@ function slidesPage(origin: string, slideId: string): string {
 { "imports": {
     "react": "/sandbox/vendor/react.js",
     "react/jsx-runtime": "/sandbox/vendor/react-jsx-runtime.js",
-    "react-dom/client": "/sandbox/vendor/react-dom-client.js"
+    "react-dom/client": "/sandbox/vendor/react-dom-client.js",
+    "react-katex": "/slides/vendor/react-katex.js",
+    "katex": "/slides/vendor/katex.js"
 } }
 </script>
 <link rel="stylesheet" href="${origin}/sandbox/reset.css">
+<link rel="stylesheet" href="${origin}/slides/vendor/katex.css">
 </head>
 <body>
 <div id="root"></div>
@@ -155,17 +214,25 @@ export async function GET(
   { params }: { params: Promise<{ slides: string[] }> },
 ) {
   const notFound = () => new Response("not found", { status: 404 });
-  const [first, second, ...rest] = (await params).slides;
+  const [first, ...rest] = (await params).slides;
+
+  // The deploy-built KaTeX vendor artifacts (`/slides/vendor/...`), served
+  // under `/slides` so the page's import map can route `react-katex`/`katex`
+  // to them (see the header table).
+  if (first === "vendor" && rest.length > 0) {
+    return serveSlidesVendor(rest);
+  }
+
+  const slideId = first;
+  const second = rest[0];
 
   // Deeper than `/slides/{a}/{b}` is not a slide URL.
-  if (rest.length > 0) return notFound();
+  if (rest.length > 1) return notFound();
 
   // The deploy-built slides harness, served as-is (immutable, built at deploy).
   if (first === "harness.js" && second === undefined) {
     return serveSlidesHarness();
   }
-
-  const slideId = first;
 
   // The per-slide bundle: fetched from the backend + compiled per request. No
   // Sec-Fetch-Dest gate — opened in a tab the JS source renders as inert text.
