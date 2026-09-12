@@ -83,7 +83,13 @@ async function compileSlide(slideId: string): Promise<Response> {
   try {
     const result = await build({
       stdin: {
-        contents: data.content,
+        // Generated slides sometimes use <InlineMath>/<BlockMath> without
+        // importing them (the automatic JSX runtime compiles that to a bare,
+        // un-imported identifier → runtime ReferenceError). Prepend the import
+        // unconditionally: with bundle:true, esbuild merges it with any
+        // duplicate the content already has and drops unused named bindings,
+        // so the delivered bundle carries one clean react-katex import.
+        contents: `import { BlockMath, InlineMath } from "react-katex";\n${data.content}`,
         resolveDir: process.cwd(),
         loader: "tsx",
         sourcefile: `slide_${slideId}.tsx`,

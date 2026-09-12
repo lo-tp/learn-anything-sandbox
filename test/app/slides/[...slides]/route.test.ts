@@ -225,6 +225,44 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     // JSX is compiled away (no raw <BlockMath> markup in the bundle).
     expect(body).not.toContain("<BlockMath");
   });
+
+  it("prepends the react-katex import when the slide uses InlineMath without importing it", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          slide_id: "s1",
+          // No react-katex import — mirrors the backend bug (a bare, un-imported
+          // InlineMath identifier would be a runtime ReferenceError).
+          content: `export default function S() { return <InlineMath math={"x"} />; }`,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // The prepended InlineMath import survives bundling as a bare external for
+    // the import map to resolve (fixes the runtime ReferenceError).
+    expect(body).toMatch(/import\{[^}]*InlineMath[^}]*\}from"react-katex"/);
+  });
+
+  it("collapses to one import when the slide already imports from react-katex", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          slide_id: "s1",
+          content: `import { InlineMath } from "react-katex";\nexport default function S() { return <InlineMath math={"x"} />; }`,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // Source has two react-katex imports (prepended + the slide's own); with
+    // bundle:true esbuild merges them into one — no duplicate-binding error.
+    expect((body.match(/from"react-katex"/g) ?? []).length).toBe(1);
+  });
 });
 
 describe("everything else", () => {
