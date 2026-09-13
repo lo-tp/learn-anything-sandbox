@@ -189,7 +189,7 @@ function contentTypeFor(file: string): string {
  * The slide page, byte-for-byte ours. All vendor artifacts (React, KaTeX)
  * are served from `/slides/vendor/*` (one React instance).
  */
-function slidesPage(origin: string, slideId: string): string {
+function slidesPage(origin: string, mainOrigin: string, slideId: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -204,6 +204,7 @@ function slidesPage(origin: string, slideId: string): string {
 } }
 </script>
 <link rel="stylesheet" href="${origin}/slides/reset.css">
+<link rel="stylesheet" href="${mainOrigin}/palette.css">
 <link rel="stylesheet" href="${origin}/slides/vendor/katex.css">
 </head>
 <body>
@@ -254,8 +255,9 @@ export async function GET(
     if (request.headers.get("sec-fetch-dest") !== "iframe") {
       return new Response("forbidden", { status: 403 });
     }
+    const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS;
     const origin = new URL(request.url).origin;
-    return new Response(slidesPage(origin, slideId), {
+    return new Response(slidesPage(origin, mainOrigin, slideId), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
