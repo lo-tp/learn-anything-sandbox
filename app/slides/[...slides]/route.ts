@@ -6,9 +6,9 @@
  * `content` is self-contained TSX) and **compiled per request** with esbuild
  * (react external). The harness is a deploy build (`out/slides/harness.js`,
  * from `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
- * All vendor artifacts (React, KaTeX) are built into `out/slides/vendor/` and
+ * All vendor artifacts (React, KaTeX, MathText) are built into `out/slides/vendor/` and
  * served under `/slides/vendor/*` so the page's import map can route
- * `react`/`react-katex`/`katex` to them.
+ * `react`/`react-katex`/`katex`/`math-text` to them.
  *
  * | URL                               | Response                                                     |
  * |-----------------------------------|--------------------------------------------------------------|
@@ -19,6 +19,7 @@
  * | `/slides/vendor/react-jsx-runtime.js` | the deploy-built JSX runtime (`react` external)         |
  * | `/slides/vendor/react-dom-client.js`  | the deploy-built React DOM client (`react` external)   |
  * | `/slides/vendor/react-katex.js`   | the deploy-built KaTeX React components (`out/slides/vendor/…`) |
+ * | `/slides/vendor/math-text.js`     | the deploy-built MathText component (`temml` bundled in)        |
  * | `/slides/vendor/katex.js`         | the deploy-built KaTeX engine                                    |
  * | `/slides/vendor/katex.css`        | the KaTeX stylesheet (+ `/slides/vendor/fonts/…` webfonts)      |
  *
@@ -46,9 +47,9 @@ const CORSA = { "Access-Control-Allow-Origin": "*" };
  * Fetch a slide's TSX from the backend and compile it into the demo bundle.
  *
  * `content` is assumed self-contained TSX with only `react`/`react-dom`/
- * `react-katex`/`katex` bare imports (all external, resolved by the page's
- * import map). esbuild can't resolve relative file imports from a backend
- * blob, so those fail (500).
+ * `react-katex`/`katex`/`math-text` bare imports (all external, resolved by
+ * the page's import map). esbuild can't resolve relative file imports from a
+ * backend blob, so those fail (500).
  */
 async function compileSlide(slideId: string): Promise<Response> {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL;
@@ -102,7 +103,7 @@ async function compileSlide(slideId: string): Promise<Response> {
       jsx: "automatic",
       minify: true,
       define: { "process.env.NODE_ENV": '"production"' },
-      external: ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex"],
+      external: ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex", "math-text"],
     });
     const code = result.outputFiles[0].text;
     return new Response(code, {
@@ -200,7 +201,8 @@ function slidesPage(origin: string, mainOrigin: string, slideId: string): string
     "react/jsx-runtime": "/slides/vendor/react-jsx-runtime.js",
     "react-dom/client": "/slides/vendor/react-dom-client.js",
     "react-katex": "/slides/vendor/react-katex.js",
-    "katex": "/slides/vendor/katex.js"
+    "katex": "/slides/vendor/katex.js",
+    "math-text": "/slides/vendor/math-text.js"
 } }
 </script>
 <link rel="stylesheet" href="${origin}/slides/reset.css">

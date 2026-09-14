@@ -10,6 +10,7 @@
  *   out/slides/harness.js                  from `core/slides/framework.tsx`, react external
  *   out/slides/vendor/katex.js             self-contained ESM of `node_modules/katex`
  *   out/slides/vendor/react-katex.js       ESM facade, `react` + `katex` external (KaTeX components)
+ *   out/slides/vendor/math-text.js         MathText component — `temml` bundled in, `react` external
  *   out/slides/vendor/katex.css            KaTeX stylesheet (+ `fonts/` dir)
  *
  * The slide page's import map routes bare `react` / `react/jsx-runtime` /
@@ -180,7 +181,22 @@ await build({
   outfile: path.join(root, "out/slides/vendor/react-katex.js"),
 });
 
-// 7. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
+// 7. slides/vendor/math-text.js — the shared MathText component
+//    (components/math-text.tsx), bundled so the LLM can import it in slide
+//    content (`import { MathText } from "math-text"`). `temml` is bundled in
+//    (self-contained); `react` and `react/jsx-runtime` are external so the
+//    import map routes them to the one shared React instance. No require
+//    banner: the source is ESM TSX with named react imports, so esbuild emits
+//    no runtime __require shim.
+await build({
+  ...shared,
+  jsx: "automatic",
+  external: ["react", "react/jsx-runtime"],
+  entryPoints: [path.join(root, "components/math-text.tsx")],
+  outfile: path.join(root, "out/slides/vendor/math-text.js"),
+});
+
+// 8. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
 //    The CSS references `url(fonts/...)` relative to itself, so the fonts must
 //    sit in `out/slides/vendor/fonts/` to match `/slides/vendor/katex.css`.
 mkdirSync(path.join(root, "out/slides/vendor/fonts"), { recursive: true });
@@ -197,6 +213,7 @@ for (const f of [
   "vendor/react-dom-client.js",
   "vendor/katex.js",
   "vendor/react-katex.js",
+  "vendor/math-text.js",
   "vendor/katex.css",
 ]) {
   console.log(`  ${f}  ${statSync(path.join(root, "out/slides", f)).size} B`);

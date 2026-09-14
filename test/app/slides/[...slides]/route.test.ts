@@ -56,6 +56,16 @@ describe("the KaTeX vendor (GET /slides/vendor/...)", () => {
     expect(await res.text()).toBe(bytes.toString("utf8"));
   });
 
+  it("serves math-text.js as JS, immutable, with CORS", async () => {
+    const res = await get("/slides/vendor/math-text.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/javascript");
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    const bytes = readFileSync(path.join(process.cwd(), "out/slides/vendor/math-text.js"));
+    expect(await res.text()).toBe(bytes.toString("utf8"));
+  });
+
   it("serves katex.js as JS, immutable", async () => {
     const res = await get("/slides/vendor/katex.js");
     expect(res.status).toBe(200);
@@ -104,6 +114,7 @@ describe("the slide page (GET /slides/{id})", () => {
     expect(html).toContain('"/slides/vendor/react-dom-client.js"');
     expect(html).toContain('"/slides/vendor/react-katex.js"');
     expect(html).toContain('"/slides/vendor/katex.js"');
+    expect(html).toContain('"/slides/vendor/math-text.js"');
     // The page we own: root div, demo meta (single part), slides harness boot.
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
@@ -223,6 +234,26 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     expect(body).toContain('from"react-katex"');
     // JSX is compiled away (no raw <BlockMath> markup in the bundle).
     expect(body).not.toContain("<BlockMath");
+  });
+
+  it("leaves math-text bare when the slide imports MathText (import map resolves it)", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          slide_id: "s1",
+          content: `import { MathText } from "math-text";\nexport default function S() { return <MathText content={"E = $E=mc^2$"} />; }`,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // math-text is external → left as a bare import specifier for the import map.
+    expect(body).toContain('from"math-text"');
+    // The component identifier survives; JSX is compiled away.
+    expect(body).toContain("MathText");
+    expect(body).not.toContain("<MathText");
   });
 
   it("prepends the react-katex import when the slide uses InlineMath without importing it", async () => {
