@@ -165,11 +165,71 @@ describe("POST /api/compile", () => {
   });
 
   it("500s an uncompilable source", async () => {
-    const res = await post({ code: "export default () => <div>" });
+    // Long enough to clear the min-length gate, but still fails to parse.
+    const res = await post({ code: "export default function Broken() { return <div>unterminated" });
     expect(res.status).toBe(500);
     const body = (await res.json()) as { code: string; error: string };
     expect(body.code).toBe("");
     expect(body.error.length).toBeGreaterThan(0);
+  });
+
+  // The gate validates the component, not just that it compiles.
+  it("400s a source below the minimum length", async () => {
+    const res = await post({ code: "export default () => null" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("at least 40 characters");
+  });
+
+  it("400s a source with no `export default`", async () => {
+    const res = await post({ code: "export function A() { return <div>hello world</div>; }" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("export default");
+  });
+
+  it("400s a component whose default export is not a function", async () => {
+    const res = await post({ code: "export default <div className=\"slide\">not a function</div>" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("default export must be a function");
+  });
+
+  it("400s a component that renders empty markup", async () => {
+    const res = await post({ code: "export default function A() { return null; }" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("empty or whitespace-only");
+  });
+
+  it("400s a component that renders whitespace-only markup", async () => {
+    const res = await post({ code: "export default function A() { return '   '; }" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("empty or whitespace-only");
+  });
+
+  it("400s a component that throws during render", async () => {
+    const res = await post({ code: "export default function A() { throw new Error('boom'); }" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; error: string };
+    expect(body.code).toBe("");
+    expect(body.error).toContain("component failed the gate");
+  });
+
+  it("200s a component that uses hooks and renders real DOM", async () => {
+    const res = await post({
+      code: "import { useState } from 'react'; export default () => { const [n] = useState(42); return <div>{n}</div>; }",
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    expect(body.code.length).toBeGreaterThan(0);
   });
 });
 
