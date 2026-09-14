@@ -32,6 +32,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { ComponentType } from "react";
+import { VENDOR_EXTERNALS } from "@/core/vendor-packages";
 
 
 /** Compiled per request from caller source — never cache. */
@@ -46,9 +47,6 @@ export const runtime = "nodejs";
  */
 const MIN_SOURCE_LENGTH = 40;
 
-/** The bare imports every slide bundle is built against (all external). */
-const EXTERNALS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex", "math-text"];
-
 /** Known project components — auto-imported when used in JSX but not explicitly imported. */
 const KNOWN_COMPONENTS: Record<string, string> = {
   MathText: "math-text",
@@ -62,16 +60,19 @@ const KNOWN_COMPONENTS: Record<string, string> = {
 const require_ = createRequire(path.join(process.cwd(), "package.json"));
 
 /**
- * Packages whose exported names are auto-imported when referenced in the
- * source without an explicit import. Exports are enumerated from the
- * installed packages (via the project-rooted require), so the list tracks
- * the installed versions instead of a hard-coded snapshot.
+ * Vendor packages whose exported names are auto-imported when referenced in
+ * the source without an explicit import — the framework subset of
+ * VENDOR_EXTERNALS (not the KaTeX/MathText packages, whose components have
+ * their own handling). Exports are enumerated from the installed packages
+ * (via the project-rooted require), so the list tracks the installed
+ * versions instead of a hard-coded snapshot.
  */
-const AUTO_IMPORT_PACKAGES: Record<string, string[]> = {
-  react: Object.keys(require_("react") as object).filter((n) => n !== "default"),
-  "react/jsx-runtime": Object.keys(require_("react/jsx-runtime") as object),
-  "react-dom/client": Object.keys(require_("react-dom/client") as object),
-};
+const AUTO_IMPORT_SPECIFIERS = ["react", "react/jsx-runtime", "react-dom/client"] as const;
+const AUTO_IMPORT_PACKAGES: Record<string, string[]> = Object.fromEntries(
+  AUTO_IMPORT_SPECIFIERS.map(
+    (s) => [s, Object.keys(require_(s) as object).filter((n) => n !== "default")],
+  ),
+);
 
 /** Escape a string for safe embedding in a RegExp pattern. */
 function reEscape(s: string): string {
@@ -173,7 +174,7 @@ async function compile(source: string, format: "esm" | "cjs"): Promise<string> {
     jsx: "automatic",
     minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
-    external: isCjs ? EXTERNALS.filter((e) => e !== "math-text") : EXTERNALS,
+    external: isCjs ? VENDOR_EXTERNALS.filter((e) => e !== "math-text") : VENDOR_EXTERNALS,
     alias: isCjs ? { "math-text": "./components/math-text" } : undefined,
   });
   return result.outputFiles[0].text;

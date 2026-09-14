@@ -32,6 +32,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { VENDOR_PACKAGES } from "@/core/vendor-packages";
 
 /** The slide page and bundle are rendered per request — they carry request-specific bytes. */
 export const dynamic = "force-dynamic";
@@ -180,21 +181,21 @@ function contentTypeFor(file: string): string {
 
 /**
  * The slide page, byte-for-byte ours. All vendor artifacts (React, KaTeX)
- * are served from `/slides/vendor/*` (one React instance).
+ * are served from `/slides/vendor/*` (one React instance). The import map is
+ * generated from VENDOR_PACKAGES so it can never drift from the specifiers
+ * the compile route leaves external.
  */
 function slidesPage(origin: string, mainOrigin: string, slideId: string): string {
+  const imports = Object.entries(VENDOR_PACKAGES)
+    .map(([spec, file]) => `    "${spec}": "${file}"`)
+    .join(",\n");
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <script type="importmap">
 { "imports": {
-    "react": "/slides/vendor/react.js",
-    "react/jsx-runtime": "/slides/vendor/react-jsx-runtime.js",
-    "react-dom/client": "/slides/vendor/react-dom-client.js",
-    "react-katex": "/slides/vendor/react-katex.js",
-    "katex": "/slides/vendor/katex.js",
-    "math-text": "/slides/vendor/math-text.js"
+${imports}
 } }
 </script>
 <link rel="stylesheet" href="${origin}/slides/reset.css">

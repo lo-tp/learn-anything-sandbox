@@ -11,6 +11,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../../../../app/slides/[...slides]/route";
+import { VENDOR_PACKAGES } from "@/core/vendor-packages";
 
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const ORIGIN = "http://localhost:3000";
@@ -108,13 +109,12 @@ describe("the slide page (GET /slides/{id})", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
     const html = await res.text();
     // Import map precedes every module script; all vendor from /slides.
+    // Drift guard: every shared vendor specifier (the same set the compile
+    // route leaves external) is mapped to its vendor artifact.
     expect(html.indexOf('type="importmap"')).toBeGreaterThan(-1);
-    expect(html).toContain('"/slides/vendor/react.js"');
-    expect(html).toContain('"/slides/vendor/react-jsx-runtime.js"');
-    expect(html).toContain('"/slides/vendor/react-dom-client.js"');
-    expect(html).toContain('"/slides/vendor/react-katex.js"');
-    expect(html).toContain('"/slides/vendor/katex.js"');
-    expect(html).toContain('"/slides/vendor/math-text.js"');
+    for (const [spec, file] of Object.entries(VENDOR_PACKAGES)) {
+      expect(html).toContain(`"${spec}": "${file}"`);
+    }
     // The page we own: root div, demo meta (single part), slides harness boot.
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');

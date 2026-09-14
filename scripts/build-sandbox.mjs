@@ -30,10 +30,17 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+// The shared vendor map (explicit .ts — Node ≥ 23.6 type stripping): the
+// out/ file names are derived from it so a renamed vendor URL can't leave
+// the build writing the old file.
+import { VENDOR_PACKAGES } from "../core/vendor-packages.ts";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const nm = path.join(root, "node_modules");
 const require_ = createRequire(import.meta.url);
+
+/** The out/ path for a vendor package: its import-map URL with `out` prefixed. */
+const vendorOut = (spec) => path.join(root, "out" + VENDOR_PACKAGES[spec]);
 
 /**
  * Export names of a CJS package, in its own order.
@@ -102,7 +109,7 @@ const slidesVendorBanner = [
 await build({
   ...shared,
   stdin: { contents: facade(path.join(nm, "react/index.js"), "react", true), resolveDir: root },
-  outfile: path.join(root, "out/slides/vendor/react.js"),
+  outfile: vendorOut("react"),
 });
 
 // 2. vendor/react-jsx-runtime.js — `react` external. The prod jsx runtime is
@@ -117,7 +124,7 @@ await build({
     contents: facade(path.join(nm, "react/jsx-runtime.js"), "react/jsx-runtime"),
     resolveDir: root,
   },
-  outfile: path.join(root, "out/slides/vendor/react-jsx-runtime.js"),
+  outfile: vendorOut("react/jsx-runtime"),
 });
 
 // 3. vendor/react-dom-client.js — `react` external; `scheduler` is *not*
@@ -134,7 +141,7 @@ await build({
     contents: facade(path.join(nm, "react-dom/client.js"), "react-dom/client"),
     resolveDir: root,
   },
-  outfile: path.join(root, "out/slides/vendor/react-dom-client.js"),
+  outfile: vendorOut("react-dom/client"),
 });
 
 // 4. slides/harness.js — the `/slides` harness, from
@@ -156,7 +163,7 @@ await build({
 await build({
   ...shared,
   stdin: { contents: facade(path.join(nm, "katex/dist/katex.js"), "katex", true), resolveDir: root },
-  outfile: path.join(root, "out/slides/vendor/katex.js"),
+  outfile: vendorOut("katex"),
 });
 
 // 6. slides/vendor/react-katex.js — the KaTeX React components. react-katex is
@@ -178,7 +185,7 @@ await build({
     ].join("\n"),
     resolveDir: root,
   },
-  outfile: path.join(root, "out/slides/vendor/react-katex.js"),
+  outfile: vendorOut("react-katex"),
 });
 
 // 7. slides/vendor/math-text.js — the shared MathText component
@@ -193,7 +200,7 @@ await build({
   jsx: "automatic",
   external: ["react", "react/jsx-runtime"],
   entryPoints: [path.join(root, "components/math-text.tsx")],
-  outfile: path.join(root, "out/slides/vendor/math-text.js"),
+  outfile: vendorOut("math-text"),
 });
 
 // 8. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
@@ -208,12 +215,7 @@ for (const font of readdirSync(path.join(nm, "katex/dist/fonts"))) {
 console.log("out/slides/:");
 for (const f of [
   "harness.js",
-  "vendor/react.js",
-  "vendor/react-jsx-runtime.js",
-  "vendor/react-dom-client.js",
-  "vendor/katex.js",
-  "vendor/react-katex.js",
-  "vendor/math-text.js",
+  ...Object.values(VENDOR_PACKAGES).map((u) => u.replace("/slides/", "")),
   "vendor/katex.css",
 ]) {
   console.log(`  ${f}  ${statSync(path.join(root, "out/slides", f)).size} B`);
