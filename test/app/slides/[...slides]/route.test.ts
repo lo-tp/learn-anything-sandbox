@@ -4,8 +4,8 @@
  * The handler is exercised directly: a synthetic `Request` plus the params
  * the App Router would resolve.
  * The backend (`NEXT_PUBLIC_BACKEND_URL`) is stubbed via a mocked global
- * `fetch`, so no network is needed — each case returns fixed TSX `content`
- * (with a marker string) or a specific backend status.
+ * `fetch`, so no network is needed — each case returns fixed compiled-ESM
+ * `content` (with a marker string) or a specific backend status.
  */
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -135,15 +135,17 @@ describe("the slide page (GET /slides/{id})", () => {
 });
 
 describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
-  const tsx = `export default function Slide() { return <div>${MARKER}</div>; }`;
+  // The backend delivers the slide already compiled to ESM: JSX is transformed
+  // to jsx-runtime calls and `react/jsx-runtime` is left bare for the import map.
+  const compiled = `import { jsx as _jsx } from "react/jsx-runtime";\nexport default function Slide() { return _jsx("div", { children: "${MARKER}" }); }`;
 
   beforeEach(() => {
     process.env.NEXT_PUBLIC_BACKEND_URL = BACKEND;
   });
 
-  it("compiles the backend TSX per request (no-store, marker survives)", async () => {
+  it("serves the backend-compiled bundle per request (no-store, marker survives)", async () => {
     mockFetch(
-      new Response(JSON.stringify({ slide_id: "s1", content: tsx }), {
+      new Response(JSON.stringify({ slide_id: "s1", content: compiled }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       }),
@@ -151,12 +153,12 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     const res = await get("/slides/s1/bundle.js");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/javascript");
-    // no-store: the bundle is compiled per request from backend content.
+    // no-store: the bundle carries request-specific backend bytes.
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = await res.text();
-    // TSX/JSX is gone — plain ESM, `react` left bare; the content survives.
-    expect(body).not.toContain("<div>");
-    expect(body).toContain("react");
+    // Served as-is: the backend-compiled ESM is not re-compiled here. The bare
+    // jsx-runtime import stays for the import map, and the content survives.
+    expect(body).toContain("react/jsx-runtime");
     expect(body).toContain(MARKER);
   });
 
@@ -202,16 +204,6 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     expect((await get("/slides/s1/bundle.js")).status).toBe(502);
   });
 
-  it("500s when the backend TSX fails to compile", async () => {
-    mockFetch(
-      new Response(
-        JSON.stringify({ slide_id: "s1", content: "export default function Broken() { return <<<" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
-    );
-    expect((await get("/slides/s1/bundle.js")).status).toBe(500);
-  });
-
   it("500s when NEXT_PUBLIC_BACKEND_URL is not set", async () => {
     delete process.env.NEXT_PUBLIC_BACKEND_URL;
     expect((await get("/slides/s1/bundle.js")).status).toBe(500);
@@ -222,7 +214,7 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
       new Response(
         JSON.stringify({
           slide_id: "s1",
-          content: `import { BlockMath } from "react-katex";\nexport default function S() { return <BlockMath math={"E = mc^2"} />; }`,
+          content: `import { jsx as _jsx } from "react/jsx-runtime";\nimport { BlockMath } from "react-katex";\nexport default function S() { return _jsx(BlockMath, { math: "E = mc^2" }); }`,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -230,9 +222,9 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     const res = await get("/slides/s1/bundle.js");
     expect(res.status).toBe(200);
     const body = await res.text();
-    // react-katex is external → left as a bare import specifier for the import map.
-    expect(body).toContain('from"react-katex"');
-    // JSX is compiled away (no raw <BlockMath> markup in the bundle).
+    // react-katex stays a bare import specifier for the import map; the
+    // backend-compiled ESM is served as-is (JSX already transformed).
+    expect(body).toContain('from "react-katex"');
     expect(body).not.toContain("<BlockMath");
   });
 
@@ -241,7 +233,7 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
       new Response(
         JSON.stringify({
           slide_id: "s1",
-          content: `import { MathText } from "math-text";\nexport default function S() { return <MathText content={"E = $E=mc^2$"} />; }`,
+          content: `import { jsx as _jsx } from "react/jsx-runtime";\nimport { MathText } from "math-text";\nexport default function S() { return _jsx(MathText, { content: "E = $E=mc^2$" }); }`,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -249,9 +241,9 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     const res = await get("/slides/s1/bundle.js");
     expect(res.status).toBe(200);
     const body = await res.text();
-    // math-text is external → left as a bare import specifier for the import map.
-    expect(body).toContain('from"math-text"');
-    // The component identifier survives; JSX is compiled away.
+    // math-text stays a bare import specifier for the import map; the
+    // backend-compiled ESM is served as-is.
+    expect(body).toContain('from "math-text"');
     expect(body).toContain("MathText");
     expect(body).not.toContain("<MathText");
   });
@@ -263,7 +255,7 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
           slide_id: "s1",
           // No react-katex import — mirrors the backend bug (a bare, un-imported
           // InlineMath identifier would be a runtime ReferenceError).
-          content: `export default function S() { return <InlineMath math={"x"} />; }`,
+          content: `import { jsx as _jsx } from "react/jsx-runtime";\nexport default function S() { return _jsx(InlineMath, { math: "x" }); }`,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -271,17 +263,17 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     const res = await get("/slides/s1/bundle.js");
     expect(res.status).toBe(200);
     const body = await res.text();
-    // The prepended InlineMath import survives bundling as a bare external for
-    // the import map to resolve (fixes the runtime ReferenceError).
-    expect(body).toMatch(/import\{[^}]*InlineMath[^}]*\}from"react-katex"/);
+    // The prepended InlineMath import fixes the bare identifier (it was not
+    // imported in the backend output) and stays a bare external for the map.
+    expect(body).toMatch(/import\s*\{[^}]*InlineMath[^}]*\}\s*from\s*"react-katex"/);
   });
 
-  it("collapses to one import when the slide already imports from react-katex", async () => {
+  it("does not add a react-katex import the slide already provides", async () => {
     mockFetch(
       new Response(
         JSON.stringify({
           slide_id: "s1",
-          content: `import { InlineMath } from "react-katex";\nexport default function S() { return <InlineMath math={"x"} />; }`,
+          content: `import { jsx as _jsx } from "react/jsx-runtime";\nimport { InlineMath } from "react-katex";\nexport default function S() { return _jsx(InlineMath, { math: "x" }); }`,
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       ),
@@ -289,16 +281,16 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     const res = await get("/slides/s1/bundle.js");
     expect(res.status).toBe(200);
     const body = await res.text();
-    // Source has two react-katex imports (prepended + the slide's own); with
-    // bundle:true esbuild merges them into one — no duplicate-binding error.
-    expect((body.match(/from"react-katex"/g) ?? []).length).toBe(1);
+    // InlineMath is already imported, so no duplicate react-katex import is
+    // prepended — exactly one survives.
+    expect((body.match(/from "react-katex"/g) ?? []).length).toBe(1);
   });
 
   it("requests the backend with a URL-encoded slide id", async () => {
     let requested: string | undefined;
     vi.stubGlobal("fetch", (url: unknown) => {
       requested = String(url);
-      return new Response(JSON.stringify({ slide_id: "s 1", content: tsx }), {
+      return new Response(JSON.stringify({ slide_id: "s 1", content: compiled }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

@@ -2,7 +2,7 @@
  * `core/slides/framework.tsx` — the `/slides` harness (issue #1).
  *
  * Loads the per-slide bundle `/slides/{slug}/bundle.js` (the
- * backend-fetched, per-request compiled slide). Vendor React is served from
+ * backend-fetched, already-compiled slide). Vendor React is served from
  * the `/slides` surface (one React instance); this harness is a deploy build
  * (`out/slides/harness.js`).
  *

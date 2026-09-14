@@ -1,11 +1,12 @@
 /**
  * `/slides/*` — the backend-fed slide demos (issue #1).
  *
- * The React bundle is **fetched from the backend**
+ * The slide bundle is **fetched from the backend**
  * (`${NEXT_PUBLIC_BACKEND_URL}/slides/{slide_id}` → JSON `{ slide_id, content }`,
- * `content` is self-contained TSX) and **compiled per request** with esbuild
- * (react external). The harness is a deploy build (`out/slides/harness.js`,
- * from `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
+ * `content` is self-contained **already-compiled ESM**). It is served as-is —
+ * the backend compiles the JSX, so there is no per-request compile here.
+ * The harness is a deploy build (`out/slides/harness.js`, from
+ * `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
  * All vendor artifacts (React, KaTeX, MathText) are built into `out/slides/vendor/` and
  * served under `/slides/vendor/*` so the page's import map can route
  * `react`/`react-katex`/`katex`/`math-text` to them.
@@ -14,7 +15,7 @@
  * |-----------------------------------|--------------------------------------------------------------|
  * | `/slides/harness.js`              | the deploy-built slides harness (`out/slides/harness.js`)     |
  * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
- * | `/slides/{slide_id}/bundle.js`    | backend-fetched + compiled slide — **no fetch-dest gate**      |
+ * | `/slides/{slide_id}/bundle.js`    | backend-fetched, pre-compiled slide — **no fetch-dest gate**   |
  * | `/slides/vendor/react.js`         | the deploy-built React (self-contained ESM)                  |
  * | `/slides/vendor/react-jsx-runtime.js` | the deploy-built JSX runtime (`react` external)         |
  * | `/slides/vendor/react-dom-client.js`  | the deploy-built React DOM client (`react` external)   |
@@ -31,7 +32,6 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { build } from "esbuild";
 
 /** The slide page and bundle are rendered per request — they carry request-specific bytes. */
 export const dynamic = "force-dynamic";
@@ -44,14 +44,37 @@ const JS = "text/javascript; charset=utf-8";
 const CORSA = { "Access-Control-Allow-Origin": "*" };
 
 /**
- * Fetch a slide's TSX from the backend and compile it into the demo bundle.
+ * Make the served bundle self-sufficient for the KaTeX components.
  *
- * `content` is assumed self-contained TSX with only `react`/`react-dom`/
- * `react-katex`/`katex`/`math-text` bare imports (all external, resolved by
- * the page's import map). esbuild can't resolve relative file imports from a
- * backend blob, so those fail (500).
+ * The backend compiles slides with the *automatic* JSX runtime, which leaves
+ * `InlineMath`/`BlockMath` as bare, un-imported identifiers when a slide uses
+ * them without importing them (→ runtime ReferenceError). For each of those
+ * names the content references but does not already import from react-katex,
+ * prepend an import so the module always resolves them. Names the content
+ * already imports are skipped, so we never emit a duplicate binding.
  */
-async function compileSlide(slideId: string): Promise<Response> {
+function ensureKatexImports(content: string): string {
+  const names = ["InlineMath", "BlockMath"].filter(
+    (n) =>
+      new RegExp(`\\b${n}\\b`).test(content) &&
+      !new RegExp(
+        `import\\s*\\{[^}]*\\b${n}\\b[^}]*\\}\\s*from\\s*["']react-katex["']`,
+      ).test(content),
+  );
+  return names.length
+    ? `import { ${names.join(", ")} } from "react-katex";\n${content}`
+    : content;
+}
+
+/**
+ * Fetch a slide from the backend and serve its bundle.
+ *
+ * `content` is self-contained, backend-compiled ESM with only `react`/
+ * `react-dom`/`react-katex`/`katex`/`math-text` bare imports (all resolved by
+ * the page's import map). The backend already compiles the JSX, so we serve it
+ * as-is — no re-compilation here.
+ */
+async function slideBundle(slideId: string): Promise<Response> {
   const backend = process.env.NEXT_PUBLIC_BACKEND_URL;
   if (!backend) {
     return new Response("NEXT_PUBLIC_BACKEND_URL is not set", {
@@ -82,40 +105,9 @@ async function compileSlide(slideId: string): Promise<Response> {
     });
   }
 
-  try {
-    const result = await build({
-      stdin: {
-        // Generated slides sometimes use <InlineMath>/<BlockMath> without
-        // importing them (the automatic JSX runtime compiles that to a bare,
-        // un-imported identifier → runtime ReferenceError). Prepend the import
-        // unconditionally: with bundle:true, esbuild merges it with any
-        // duplicate the content already has and drops unused named bindings,
-        // so the delivered bundle carries one clean react-katex import.
-        contents: `import { BlockMath, InlineMath } from "react-katex";\n${data.content}`,
-        resolveDir: process.cwd(),
-        loader: "tsx",
-        sourcefile: `slide_${slideId}.tsx`,
-      },
-      bundle: true,
-      write: false,
-      format: "esm",
-      target: "es2020",
-      jsx: "automatic",
-      minify: true,
-      define: { "process.env.NODE_ENV": '"production"' },
-      external: ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex", "math-text"],
-    });
-    const code = result.outputFiles[0].text;
-    return new Response(code, {
-      headers: { "Content-Type": JS, "Cache-Control": "no-store", ...CORSA },
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return new Response(`slide failed to compile: ${msg}`, {
-      status: 500,
-      headers: { ...CORSA },
-    });
-  }
+  return new Response(ensureKatexImports(data.content), {
+    headers: { "Content-Type": JS, "Cache-Control": "no-store", ...CORSA },
+  });
 }
 
 /** The deploy-built slides harness lives in `out/slides/` (gitignored). */
@@ -243,10 +235,11 @@ export async function GET(
     return serveSlidesHarness();
   }
 
-  // The per-slide bundle: fetched from the backend + compiled per request. No
-  // Sec-Fetch-Dest gate — opened in a tab the JS source renders as inert text.
+  // The per-slide bundle: fetched from the backend (already compiled there)
+  // and served as-is. No Sec-Fetch-Dest gate — opened in a tab the JS source
+  // renders as inert text.
   if (second === "bundle.js") {
-    return compileSlide(slideId);
+    return slideBundle(slideId);
   }
 
   // The slide page (no further path segment).
@@ -257,7 +250,7 @@ export async function GET(
     if (request.headers.get("sec-fetch-dest") !== "iframe") {
       return new Response("forbidden", { status: 403 });
     }
-    const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS;
+    const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS ?? "";
     const origin = new URL(request.url).origin;
     return new Response(slidesPage(origin, mainOrigin, slideId), {
       headers: {
