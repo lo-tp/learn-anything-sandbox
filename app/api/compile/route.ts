@@ -13,8 +13,7 @@
  *      `renderToStaticMarkup` against the same node_modules React the bundle
  *      uses; an empty/whitespace-only DOM, or a render that throws, is rejected.
  *
- * Only a source that survives the gate is normalized for KaTeX and compiled to
- * minified ESM with esbuild (react external — the same transform the
+ * Only a source that survives the gate is compiled to minified ESM with esbuild (react external — the same transform the
  * `/slides/{id}/bundle.js` route uses). This is what makes first-attempt garbage
  * and a degenerate regeneration fail instead of passing as "all valid."
  *
@@ -33,7 +32,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { ComponentType } from "react";
-import { normalizeLatex } from "@/core/latex-normalizer";
+
 
 /** Compiled per request from caller source — never cache. */
 export const dynamic = "force-dynamic";
@@ -48,7 +47,25 @@ export const runtime = "nodejs";
 const MIN_SOURCE_LENGTH = 40;
 
 /** The bare imports every slide bundle is built against (all external). */
-const EXTERNALS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex"];
+const EXTERNALS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "katex", "math-text"];
+
+/** Known project components — auto-imported when used in JSX but not explicitly imported. */
+const KNOWN_COMPONENTS: Record<string, string> = {
+  MathText: "math-text",
+};
+
+/** Prepend imports for known components that appear as JSX tags but have no matching import. */
+function injectComponentImports(source: string): string {
+  const imports: string[] = [];
+  for (const [name, path] of Object.entries(KNOWN_COMPONENTS)) {
+    const used = new RegExp(`<${name}[\\s/>]`).test(source);
+    const imported = new RegExp(`import\\s+\\{?\\s*${name}\\b`).test(source);
+    if (used && !imported) {
+      imports.push(`import { ${name} } from "${path}";`);
+    }
+  }
+  return imports.length > 0 ? imports.join("\n") + "\n" + source : source;
+}
 
 /**
  * The gate's require, rooted at the project so `react` / `react-dom/server`
@@ -71,11 +88,20 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** esbuild the source to a bundle in the requested format (react external). */
+/**
+ * esbuild the source to a bundle in the requested format (react external).
+ *
+ * ESM (browser output): `math-text` stays external — the slide page's import
+ * map resolves it to `/slides/vendor/math-text.js`.
+ *
+ * CJS (gate / headless render): `math-text` is aliased to its source file so
+ * esbuild bundles it and Node can `require` the result.
+ */
 async function compile(source: string, format: "esm" | "cjs"): Promise<string> {
+  const isCjs = format === "cjs";
   const result = await build({
     stdin: {
-      contents: normalizeLatex(source),
+      contents: injectComponentImports(source),
       resolveDir: process.cwd(),
       loader: "tsx",
       sourcefile: "compile.tsx",
@@ -83,12 +109,13 @@ async function compile(source: string, format: "esm" | "cjs"): Promise<string> {
     bundle: true,
     write: false,
     format,
-    platform: format === "cjs" ? "node" : "browser",
+    platform: isCjs ? "node" : "browser",
     target: "es2020",
     jsx: "automatic",
     minify: true,
     define: { "process.env.NODE_ENV": '"production"' },
-    external: EXTERNALS,
+    external: isCjs ? EXTERNALS.filter((e) => e !== "math-text") : EXTERNALS,
+    alias: isCjs ? { "math-text": "./components/math-text" } : undefined,
   });
   return result.outputFiles[0].text;
 }
