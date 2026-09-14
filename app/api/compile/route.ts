@@ -159,6 +159,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     esm = await compile(code, "esm");
   } catch (err) {
+    // Log the offending source JSX so a compile failure is debuggable.
+    console.error("[api/compile] esbuild failed to compile source JSX:\n" + code);
     return json({ code: "", error: message(err) }, 500);
   }
 
