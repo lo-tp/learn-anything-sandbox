@@ -143,6 +143,7 @@ export async function POST(request: Request): Promise<Response> {
 
   // Gate 1 — length: reject degenerate slivers before any compile.
   if (code.trim().length < MIN_SOURCE_LENGTH) {
+    console.error(`[api/compile] source too short (< ${MIN_SOURCE_LENGTH} chars):\n` + code);
     return json(
       { code: "", error: `code must be at least ${MIN_SOURCE_LENGTH} characters` },
       400,
@@ -151,6 +152,7 @@ export async function POST(request: Request): Promise<Response> {
 
   // Gate 2 — a default export must be declared.
   if (!/(?:export\s+default\b)|(?:\bas\s+default\b)/.test(code)) {
+    console.error("[api/compile] source missing `export default`:\n" + code);
     return json({ code: "", error: "code must declare `export default`" }, 400);
   }
 
@@ -169,9 +171,11 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const html = await headlessRender(await compile(code, "cjs"));
     if (html.trim() === "") {
+      console.error("[api/compile] component renders empty markup:\n" + code);
       return json({ code: "", error: "component renders empty or whitespace-only markup" }, 400);
     }
   } catch (err) {
+    console.error(`[api/compile] component failed the gate: ${message(err)}\n` + code);
     return json({ code: "", error: `component failed the gate: ${message(err)}` }, 400);
   }
 
