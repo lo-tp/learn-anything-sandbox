@@ -54,25 +54,84 @@ const KNOWN_COMPONENTS: Record<string, string> = {
   MathText: "math-text",
 };
 
-/** Prepend imports for known components that appear as JSX tags but have no matching import. */
-function injectComponentImports(source: string): string {
-  const imports: string[] = [];
-  for (const [name, path] of Object.entries(KNOWN_COMPONENTS)) {
-    const used = new RegExp(`<${name}[\\s/>]`).test(source);
-    const imported = new RegExp(`import\\s+\\{?\\s*${name}\\b`).test(source);
-    if (used && !imported) {
-      imports.push(`import { ${name} } from "${path}";`);
-    }
-  }
-  return imports.length > 0 ? imports.join("\n") + "\n" + source : source;
-}
-
 /**
  * The gate's require, rooted at the project so `react` / `react-dom/server`
  * resolve to the *same* node_modules copies the compiled bundle imports — a
  * single React instance for the headless render (no "Invalid hook call").
  */
 const require_ = createRequire(path.join(process.cwd(), "package.json"));
+
+/**
+ * Packages whose exported names are auto-imported when referenced in the
+ * source without an explicit import. Exports are enumerated from the
+ * installed packages (via the project-rooted require), so the list tracks
+ * the installed versions instead of a hard-coded snapshot.
+ */
+const AUTO_IMPORT_PACKAGES: Record<string, string[]> = {
+  react: Object.keys(require_("react") as object).filter((n) => n !== "default"),
+  "react/jsx-runtime": Object.keys(require_("react/jsx-runtime") as object),
+  "react-dom/client": Object.keys(require_("react-dom/client") as object),
+};
+
+/** Escape a string for safe embedding in a RegExp pattern. */
+function reEscape(s: string): string {
+  return s.replace(/[\\^$*+?.()|[\]{}]/g, "\\$&");
+}
+
+/**
+ * Prepend imports for symbols the source references without importing:
+ *
+ *   - known project components used as JSX tags (e.g. `<MathText>`),
+ *   - `React` used as a bare identifier (→ `import * as React from "react"`),
+ *   - exported names of the auto-import packages (`useState`, `createRoot`, …).
+ *
+ * Heuristic identifier scan (no parse): a name is skipped when the source
+ * already imports it, imports the package as a namespace (`import * as`),
+ * or declares it locally (`const`/`let`/`var`/`function`/`class`).
+ */
+function injectImports(source: string): string {
+  const imports: string[] = [];
+  const injected = new Set<string>();
+
+  for (const [name, specifier] of Object.entries(KNOWN_COMPONENTS)) {
+    const used = new RegExp(`<${reEscape(name)}[\\s/>]`).test(source);
+    const imported = new RegExp(`import\\s+\\{?\\s*${reEscape(name)}\\b`).test(source);
+    if (used && !imported) {
+      imports.push(`import { ${name} } from "${specifier}";`);
+      injected.add(name);
+    }
+  }
+
+  // A bare `React` identifier (e.g. `React.useState`) → a namespace import.
+  // (Not a default import: React's CJS build has no `default` export, so a
+  // default import would be undefined in the CJS headless-render gate.)
+  if (
+    /\bReact\b/.test(source) &&
+    !/import\s+(?:\*\s+as\s+)?React\b/.test(source) &&
+    !/\b(?:const|let|var|function|class)\s+React\b/.test(source)
+  ) {
+    imports.push(`import * as React from "react";`);
+    injected.add("React");
+  }
+
+  for (const [specifier, names] of Object.entries(AUTO_IMPORT_PACKAGES)) {
+    // A namespace import of this package already covers every one of its names.
+    if (new RegExp(`import\\s+\\*\\s+as\\s+\\w+\\s+from\\s+["']${reEscape(specifier)}["']`).test(source)) continue;
+    const wanted = names.filter((name) => {
+      if (injected.has(name)) return false;
+      const re = reEscape(name);
+      if (new RegExp(`\\b(?:const|let|var|function|class)\\s+${re}\\b`).test(source)) return false;
+      if (!new RegExp(`\\b${re}\\b`).test(source)) return false;
+      return !new RegExp(`import\\s+\\{?\\s*${re}\\b`).test(source);
+    });
+    if (wanted.length > 0) {
+      imports.push(`import { ${wanted.join(", ")} } from "${specifier}";`);
+      for (const n of wanted) injected.add(n);
+    }
+  }
+
+  return imports.length > 0 ? imports.join("\n") + "\n" + source : source;
+}
 
 function json(body: { code: string; error: string | null }, status: number): Response {
   return new Response(JSON.stringify(body), {
@@ -101,7 +160,7 @@ async function compile(source: string, format: "esm" | "cjs"): Promise<string> {
   const isCjs = format === "cjs";
   const result = await build({
     stdin: {
-      contents: injectComponentImports(source),
+      contents: injectImports(source),
       resolveDir: process.cwd(),
       loader: "tsx",
       sourcefile: "compile.tsx",

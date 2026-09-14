@@ -132,6 +132,56 @@ describe("POST /api/compile", () => {
     expect(body.error).toBeNull();
     expect(body.code.length).toBeGreaterThan(0);
   });
+
+  // Auto-imports: exported symbols used without an import get one prepended.
+  it("auto-imports an unimported react export (useState)", async () => {
+    const res = await post({ code: "export default function A() { const [n] = useState(1); return <div>{n}</div>; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    // Exactly one bare `react` import in the minified output.
+    expect((body.code.match(/"react"/g) ?? []).length).toBe(1);
+  });
+
+  it("auto-imports a bare React identifier as a namespace import", async () => {
+    const res = await post({ code: "export default function A() { const [n] = React.useState(1); return <div>{n}</div>; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    expect((body.code.match(/"react"/g) ?? []).length).toBe(1);
+  });
+
+  it("does not duplicate a name the source already imports", async () => {
+    const res = await post({ code: "import { useState } from 'react'; export default () => { const [n] = useState(1); return <div>{n}</div>; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    expect((body.code.match(/"react"/g) ?? []).length).toBe(1);
+  });
+
+  it("never auto-imports a locally declared name", async () => {
+    const res = await post({ code: "const useState = () => 1; export default function A() { return <div>{useState()}</div>; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    // No react import at all — only the jsx-runtime specifier appears.
+    expect((body.code.match(/"react"/g) ?? []).length).toBe(0);
+  });
+
+  it("skips auto-imports when the package is imported as a namespace", async () => {
+    const res = await post({ code: "import * as R from 'react'; export default () => { const [n] = R.useState(1); return <div>{n}</div>; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+    expect((body.code.match(/"react"/g) ?? []).length).toBe(1);
+  });
+
+  it("still auto-imports MathText used as a JSX tag", async () => {
+    const res = await post({ code: "export default function A() { return <MathText content={'$x$'} />; }" });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { code: string; error: string | null };
+    expect(body.error).toBeNull();
+  });
 });
 
 describe("KaTeX whitelist drift guard", () => {
