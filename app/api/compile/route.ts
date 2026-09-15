@@ -74,7 +74,7 @@ const require_ = createRequire(path.join(process.cwd(), "package.json"));
  * enumerated from the installed packages (via the project-rooted require), so
  * the list tracks the installed versions instead of a hard-coded snapshot.
  */
-const AUTO_IMPORT_SPECIFIERS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex"] as const;
+const AUTO_IMPORT_SPECIFIERS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex", "better-react-mathjax"] as const;
 const AUTO_IMPORT_PACKAGES: Record<string, string[]> = Object.fromEntries(
   AUTO_IMPORT_SPECIFIERS.map(
     (s) => [s, Object.keys(require_(s) as object).filter((n) => n !== "default")],

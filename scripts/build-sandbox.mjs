@@ -11,6 +11,7 @@
  *   out/slides/vendor/katex.js             self-contained ESM of `node_modules/katex`
  *   out/slides/vendor/react-katex.js       ESM facade, `react` + `katex` external (KaTeX components)
  *   out/slides/vendor/math-text.js         MathText component — `temml` bundled in, `react` external
+ *   out/slides/vendor/better-react-mathjax.js MathJax React components — `react` external
  *   out/slides/vendor/katex.css            KaTeX stylesheet (+ `fonts/` dir)
  *
  * The slide page's import map routes bare `react` / `react/jsx-runtime` /
@@ -203,7 +204,27 @@ await build({
   outfile: vendorOut("math-text"),
 });
 
-// 8. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
+// 8. slides/vendor/better-react-mathjax.js — the MathJax React components.
+//    ESM entry with named exports (`MathJax`, `MathJaxContext`);
+//    `react` external (it uses React.createElement, not JSX). MathJax itself
+//    is loaded from a CDN at runtime, so nothing else to bundle.
+await build({
+  ...shared,
+  external: ["react"],
+  banner: {
+    js: requireBanner,
+  },
+  stdin: {
+    contents: [
+      `import { MathJax, MathJaxContext, MathJaxBaseContext } from "${path.join(nm, "better-react-mathjax/esm/index.js")}";`,
+      `export { MathJax, MathJaxContext, MathJaxBaseContext };`,
+    ].join("\n"),
+    resolveDir: root,
+  },
+  outfile: vendorOut("better-react-mathjax"),
+});
+
+// 9. slides/vendor/katex.css + fonts/ — copy KaTeX's stylesheet and webfonts.
 //    The CSS references `url(fonts/...)` relative to itself, so the fonts must
 //    sit in `out/slides/vendor/fonts/` to match `/slides/vendor/katex.css`.
 mkdirSync(path.join(root, "out/slides/vendor/fonts"), { recursive: true });

@@ -18,6 +18,7 @@ export const VENDOR_PACKAGES: Record<string, string> = {
   "react-katex": "/slides/vendor/react-katex.js",
   katex: "/slides/vendor/katex.js",
   "math-text": "/slides/vendor/math-text.js",
+  "better-react-mathjax": "/slides/vendor/better-react-mathjax.js",
 };
 
 /** The bare specifiers themselves — esbuild `external` for slide bundles. */
