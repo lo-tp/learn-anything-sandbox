@@ -29,6 +29,8 @@ describe("POST /api/compile", () => {
   it("compiles valid JSX to minified ESM (200, error null)", async () => {
     const res = await post({ code: "export default function A() { return <div>hello</div>; }" });
     expect(res.status).toBe(200);
+    // No custom reason phrase on success.
+    expect(res.statusText).toBe("");
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("cache-control")).toBe("no-store");
     const body = (await res.json()) as { code: string; error: string | null };
@@ -72,6 +74,9 @@ describe("POST /api/compile", () => {
     const body = (await res.json()) as { code: string; error: string };
     expect(body.code).toBe("");
     expect(body.error.length).toBeGreaterThan(0);
+    // The reason phrase carries the real error (whitespace collapsed), not
+    // the generic "Internal Server Error".
+    expect(res.statusText).toBe(body.error.replace(/\s+/g, " "));
   });
 
   // The gate validates the component, not just that it compiles.
@@ -81,6 +86,8 @@ describe("POST /api/compile", () => {
     const body = (await res.json()) as { code: string; error: string };
     expect(body.code).toBe("");
     expect(body.error).toContain("at least 40 characters");
+    // The reason phrase carries the real error, not the generic "Bad Request".
+    expect(res.statusText).toContain("at least 40 characters");
   });
 
   it("400s a source with no `export default`", async () => {

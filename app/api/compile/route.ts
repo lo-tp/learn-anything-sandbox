@@ -23,6 +23,12 @@
  * | 400    | `{ code: "", error: <msg> }`   | malformed JSON, missing/empty/too-short `code`, no `export default`, default export not a function, or empty/whitespace-only render / render threw |
  * | 500    | `{ code: "", error: <msg> }`   | esbuild failed to compile the source       |
  *
+ * On error responses the HTTP reason phrase (status text) also carries the
+ * same message, so a caller that only reads the status line — e.g.
+ * `${res.status} ${res.statusText}` — sees the real reason instead of the
+ * generic "Bad Request" / "Internal Error". Whitespace in the message is
+ * collapsed to single spaces, as the reason phrase forbids newlines/tabs.
+ *
  * The response is computed per request from caller-supplied source, so it is
  * `no-store`. The endpoint is public and same-origin — unlike the module-serving
  * `/slides` route, no CORS headers are needed.
@@ -135,8 +141,13 @@ function injectImports(source: string): string {
 }
 
 function json(body: { code: string; error: string | null }, status: number): Response {
+  // The reason phrase mirrors the error, so callers that only read the status
+  // line see the real reason. Collapsed to single spaces: a reason phrase
+  // may not contain newlines or tabs (undici throws on them).
+  const statusText = body.error ? body.error.replace(/\s+/g, " ") : undefined;
   return new Response(JSON.stringify(body), {
     status,
+    ...(statusText ? { statusText } : {}),
     headers: {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store",
