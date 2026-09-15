@@ -1,19 +1,12 @@
 /**
  * Re-insert a dropped closing backtick on KaTeX `math={String.raw`…`}` templates.
  *
- *   math={String.raw`(x - x_1)(x - x_2)}      // missing the backtick before `}`
- *
- * rewritten to
- *
- *   math={String.raw`(x - x_1)(x - x_2)`}
- *
- *
  * For each `math={String.raw` marker, walk forward tracking JSX `{}` nesting and
  * skipping `\` escapes. If the closing backtick comes first, leave it; otherwise
  * splice `` ` `` in just before the JSX-closing `}` (depth → 0). The depth tracking
  * keeps this safe for brace-heavy math like `\frac{b}{a}`.
  */
-export function preProcess(source: string): string {
+export function fixKaTeXBacktick(source: string): string {
   const markerRegex = /math\s*=\s*\{\s*String\.raw`/g;
   let result = "";
   let cursor = 0;
