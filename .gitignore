@@ -16,3 +16,7 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local dev scratch
+compile.sh
+test.jsx

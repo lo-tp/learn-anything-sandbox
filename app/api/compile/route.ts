@@ -39,6 +39,7 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import type { ComponentType } from "react";
 import { VENDOR_EXTERNALS } from "@/core/vendor-packages";
+import { preProcess } from "./preprocess";
 
 
 /** Compiled per request from caller source — never cache. */
@@ -67,13 +68,13 @@ const require_ = createRequire(path.join(process.cwd(), "package.json"));
 
 /**
  * Vendor packages whose exported names are auto-imported when referenced in
- * the source without an explicit import — the framework subset of
- * VENDOR_EXTERNALS (not the KaTeX/MathText packages, whose components have
- * their own handling). Exports are enumerated from the installed packages
- * (via the project-rooted require), so the list tracks the installed
- * versions instead of a hard-coded snapshot.
+ * the source without an explicit import — the framework packages plus
+ * react-katex (its BlockMath/InlineMath components may be used directly in a
+ * slide). MathText is handled separately via KNOWN_COMPONENTS. Exports are
+ * enumerated from the installed packages (via the project-rooted require), so
+ * the list tracks the installed versions instead of a hard-coded snapshot.
  */
-const AUTO_IMPORT_SPECIFIERS = ["react", "react/jsx-runtime", "react-dom/client"] as const;
+const AUTO_IMPORT_SPECIFIERS = ["react", "react/jsx-runtime", "react-dom/client", "react-katex"] as const;
 const AUTO_IMPORT_PACKAGES: Record<string, string[]> = Object.fromEntries(
   AUTO_IMPORT_SPECIFIERS.map(
     (s) => [s, Object.keys(require_(s) as object).filter((n) => n !== "default")],
@@ -254,10 +255,13 @@ export async function POST(request: Request): Promise<Response> {
     return json({ code: "", error: "code must declare `export default`" }, 400);
   }
 
+  // Pre-process the source to fix known JSX issues before compiling.
+  const source = preProcess(code);
+
   // Compile to ESM for the response; a compile failure is still a 500.
   let esm: string;
   try {
-    esm = await compile(code, "esm");
+    esm = await compile(source, "esm");
   } catch (err) {
     // Log the offending source JSX so a compile failure is debuggable.
     console.error("[api/compile] esbuild failed to compile source JSX:\n" + code);
@@ -267,7 +271,7 @@ export async function POST(request: Request): Promise<Response> {
   // Gate 3 + 4 — the default export must be a real component that renders
   // non-empty DOM. Rebuilt as CJS so it can be required and headless-rendered.
   try {
-    const html = await headlessRender(await compile(code, "cjs"));
+    const html = await headlessRender(await compile(source, "cjs"));
     if (html.trim() === "") {
       console.error("[api/compile] component renders empty markup:\n" + code);
       return json({ code: "", error: "component renders empty or whitespace-only markup" }, 400);
