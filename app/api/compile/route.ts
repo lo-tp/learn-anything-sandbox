@@ -17,17 +17,24 @@
  * `/slides/{id}/bundle.js` route uses). This is what makes first-attempt garbage
  * and a degenerate regeneration fail instead of passing as "all valid."
  *
- * | status | body                          | when                                        |
- * |--------|-------------------------------|-------------------------------------------|
- * | 200    | `{ code, error: null }`        | passed the gate, compiled successfully     |
- * | 400    | `{ code: "", error: <msg> }`   | malformed JSON, missing/empty/too-short `code`, no `export default`, default export not a function, or empty/whitespace-only render / render threw |
- * | 500    | `{ code: "", error: <msg> }`   | esbuild failed to compile the source       |
+ * | status | body                              | when                                        |
+ * |--------|-----------------------------------|-------------------------------------------|
+ * | 200    | `{ code, error: null }`            | passed the gate, compiled successfully     |
+ * | 400    | `{ code: "", error: <msg> }`        | malformed JSON, missing/empty/too-short `code`, no `export default`, default export not a function, or empty/whitespace-only render / render threw |
+ * | 500    | `{ code: "", error: <msg> }`        | esbuild failed to compile the source       |
  *
  * On error responses the HTTP reason phrase (status text) also carries the
  * same message, so a caller that only reads the status line — e.g.
  * `${res.status} ${res.statusText}` — sees the real reason instead of the
  * generic "Bad Request" / "Internal Error". Whitespace in the message is
  * collapsed to single spaces, as the reason phrase forbids newlines/tabs.
+ *
+ * Compile and gate failures additionally carry a `traceback` field with the
+ * full multi-line diagnostic — esbuild's pretty error output (file/line/column,
+ * the offending source line, a caret, and any notes) for a failed compile, or
+ * the thrown stack for a component that failed the render gate. The concise
+ * `error` field is what the reason phrase mirrors; `traceback` is the detail
+ * the backend should surface to the caller.
  *
  * The response is computed per request from caller-supplied source, so it is
  * `no-store`. The endpoint is public and same-origin — unlike the module-serving
@@ -141,12 +148,19 @@ function injectImports(source: string): string {
   return imports.length > 0 ? imports.join("\n") + "\n" + source : source;
 }
 
-function json(body: { code: string; error: string | null }, status: number): Response {
-  // The reason phrase mirrors the error, so callers that only read the status
-  // line see the real reason. Collapsed to single spaces: a reason phrase
-  // may not contain newlines or tabs (undici throws on them).
+function json(
+  body: { code: string; error: string | null; traceback?: string },
+  status: number,
+): Response {
+  // The reason phrase mirrors the (concise) error, so callers that only read
+  // the status line see the real reason. Collapsed to single spaces: a reason
+  // phrase may not contain newlines or tabs (undici throws on them).
   const statusText = body.error ? body.error.replace(/\s+/g, " ") : undefined;
-  return new Response(JSON.stringify(body), {
+  // `error` stays concise (it feeds the reason phrase); `traceback` carries
+  // the full multi-line diagnostic for the caller, present only on errors.
+  const payload: Record<string, unknown> = { code: body.code, error: body.error };
+  if (body.traceback) payload.traceback = body.traceback;
+  return new Response(JSON.stringify(payload), {
     status,
     ...(statusText ? { statusText } : {}),
     headers: {
@@ -158,6 +172,69 @@ function json(body: { code: string; error: string | null }, status: number): Res
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** A single esbuild diagnostic location (file/line/column + the source line). */
+type EsbLocation = {
+  file?: string;
+  line?: number;
+  column?: number;
+  lineText?: string;
+  length?: number;
+  suggestion?: string;
+};
+/** A secondary diagnostic note (e.g. "the opening tag is here"). */
+type EsbNote = { text?: string; location?: EsbLocation };
+/** A top-level esbuild diagnostic. */
+type EsbError = { text?: string; location?: EsbLocation; notes?: EsbNote[] };
+
+/**
+ * Render one esbuild diagnostic's location block, mirroring esbuild's CLI
+ * pretty-print: the `file:line:column:` header, the source line, a caret (or
+ * `~~~` run) under the offending column, and a suggestion line if present.
+ */
+function fmtLoc(loc: EsbLocation, width: number, markerPrefix = "│"): string {
+  const file = loc.file ?? "?";
+  const line = loc.line ?? 0;
+  const column = loc.column ?? 0;
+  const lineText = loc.lineText ?? "";
+  const gutter = String(line).padStart(width);
+  const pad = " ".repeat(Math.max(0, column - 1));
+  const len = loc.length ?? 0;
+  const marker = len > 0 ? "~".repeat(len) : "^";
+  const out: string[] = [];
+  out.push(`    ${file}:${line}:${column}:`);
+  out.push(`    ${gutter} │ ${lineText}`);
+  out.push(`    ${gutter} ${markerPrefix} ${pad}${marker}`);
+  if (loc.suggestion) out.push(`    ${gutter} ╵ ${pad}${loc.suggestion}`);
+  return out.join("\n");
+}
+
+/** Render one esbuild diagnostic (text + location + its notes) as text. */
+function formatDiagnostic(e: EsbError): string {
+  const lineNos: number[] = [];
+  if (e.location?.line) lineNos.push(e.location.line);
+  for (const n of e.notes ?? []) if (n.location?.line) lineNos.push(n.location.line);
+  const width = Math.max(2, ...lineNos.map((n) => String(n).length));
+  const out: string[] = [`✘ [ERROR] ${e.text ?? "(unknown)"}`, ""];
+  if (e.location) out.push(fmtLoc(e.location, width));
+  for (const n of e.notes ?? []) {
+    out.push("", `  ${n.text ?? ""}`);
+    if (n.location) out.push(fmtLoc(n.location, width, "╵"));
+  }
+  return out.join("\n");
+}
+
+/**
+ * Rebuild esbuild's pretty multi-line diagnostic (the "traceback") from the
+ * structured `errors` array on a failed build, so the caller gets the
+ * file/line/column, the offending source line, a caret, and any notes — not
+ * just the one-line `err.message`.
+ */
+function formatEsbuildError(err: unknown): string | undefined {
+  const errors = (err as { errors?: EsbError[] } | null)?.errors;
+  if (!errors || errors.length === 0) return undefined;
+  return errors.map(formatDiagnostic).join("\n\n");
 }
 
 /**
@@ -265,7 +342,11 @@ export async function POST(request: Request): Promise<Response> {
   } catch (err) {
     // Log the offending source JSX so a compile failure is debuggable.
     console.error("[api/compile] esbuild failed to compile source JSX:\n" + code);
-    return json({ code: "", error: message(err) }, 500);
+    // Return the full esbuild diagnostic (file/line/column + source line +
+    // caret + notes) so the backend sees the real traceback, not just the
+    // one-line message. Fall back to the stack if there are no structured errors.
+    const traceback = formatEsbuildError(err) ?? (err instanceof Error ? err.stack : undefined);
+    return json({ code: "", error: message(err), traceback }, 500);
   }
 
   // Gate 3 + 4 — the default export must be a real component that renders
@@ -278,7 +359,9 @@ export async function POST(request: Request): Promise<Response> {
     }
   } catch (err) {
     console.error(`[api/compile] component failed the gate: ${message(err)}\n` + code);
-    return json({ code: "", error: `component failed the gate: ${message(err)}` }, 400);
+    // Surface the thrown stack so a render failure is debuggable by the caller.
+    const traceback = err instanceof Error && err.stack ? err.stack : undefined;
+    return json({ code: "", error: `component failed the gate: ${message(err)}`, traceback }, 400);
   }
 
   return json({ code: esm, error: null }, 200);
