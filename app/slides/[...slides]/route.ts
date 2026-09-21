@@ -3,7 +3,11 @@
  *
  * The slide bundle is **fetched from the backend**
  * (`${NEXT_PUBLIC_BACKEND_URL}/slides/{slide_id}` → JSON `{ slide_id, content }`,
- * `content` is self-contained **already-compiled ESM**). It is served as-is —
+ * `content` is self-contained **already-compiled ESM**). That server-to-server
+ * fetch carries `X-Service-Token` (the service-identity gate, #102/#104):
+ * the secret is read server-side from the gitignored local env
+ * (`SANDBOX_SERVICE_TOKEN`), never exposed to the browser — the route 500s
+ * fail-secure if it is unset. It is served as-is —
  * the backend compiles the JSX, so there is no per-request compile here.
  * The harness is a deploy build (`out/slides/harness.js`, from
  * `core/slides/framework.tsx`) that loads `/slides/{slide_id}/bundle.js`.
@@ -83,10 +87,23 @@ async function slideBundle(slideId: string): Promise<Response> {
       headers: { ...CORSA },
     });
   }
+  // Service-identity gate (#104): the backend's internal slides endpoint
+  // rejects anything but a matching X-Service-Token. The secret is read
+  // server-side from the gitignored local env — it is not a NEXT_PUBLIC_*
+  // var, so it is never inlined into the browser bundle.
+  const serviceToken = process.env.SANDBOX_SERVICE_TOKEN;
+  if (!serviceToken) {
+    return new Response("SANDBOX_SERVICE_TOKEN is not set", {
+      status: 500,
+      headers: { ...CORSA },
+    });
+  }
 
   let data: { slide_id?: unknown; content?: unknown };
   try {
-    const res = await fetch(`${backend}/slides/${encodeURIComponent(slideId)}`);
+    const res = await fetch(`${backend}/slides/${encodeURIComponent(slideId)}`, {
+      headers: { "X-Service-Token": serviceToken },
+    });
     if (res.status === 404) {
       return new Response("not found", { status: 404, headers: { ...CORSA } });
     }

@@ -33,6 +33,7 @@ function mockFetch(res: Response) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  delete process.env.SANDBOX_SERVICE_TOKEN;
 });
 
 describe("deploy-built slides harness", () => {
@@ -179,6 +180,9 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
 
   beforeEach(() => {
     process.env.NEXT_PUBLIC_BACKEND_URL = BACKEND;
+    // The local-dev contract (#102): the secret lives in both repos' local
+    // env. The test harness is this suite's local env.
+    process.env.SANDBOX_SERVICE_TOKEN = "test-token";
   });
 
   it("serves the backend-compiled bundle per request (no-store, marker survives)", async () => {
@@ -322,6 +326,49 @@ describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
     // InlineMath is already imported, so no duplicate react-katex import is
     // prepended — exactly one survives.
     expect((body.match(/from "react-katex"/g) ?? []).length).toBe(1);
+  });
+
+  it("attaches the service token from env as X-Service-Token on the backend fetch", async () => {
+    process.env.SANDBOX_SERVICE_TOKEN = "secret-token";
+    let requestedHeaders: Headers | undefined;
+    vi.stubGlobal("fetch", (_url: unknown, init?: RequestInit) => {
+      requestedHeaders = init?.headers ? new Headers(init.headers) : undefined;
+      return new Response(JSON.stringify({ slide_id: "s1", content: compiled }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const res = await get("/slides/s1/bundle.js");
+    expect(res.status).toBe(200);
+    // Server-to-server service-identity gate (#104): the secret is read
+    // server-side and rides the X-Service-Token header.
+    expect(requestedHeaders?.get("X-Service-Token")).toBe("secret-token");
+  });
+
+  it("500s fail-fast when SANDBOX_SERVICE_TOKEN is not set", async () => {
+    delete process.env.SANDBOX_SERVICE_TOKEN;
+    let fetches = 0;
+    vi.stubGlobal("fetch", () => {
+      fetches += 1;
+      return new Response(JSON.stringify({ slide_id: "s1", content: compiled }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    const res = await get("/slides/s1/bundle.js");
+    // Fail-secure (#102): no secret, no request — the 500 makes the
+    // "secret must live in both repos' local env" requirement explicit.
+    expect(res.status).toBe(500);
+    expect(await res.text()).toContain("SANDBOX_SERVICE_TOKEN");
+    expect(fetches).toBe(0);
+  });
+
+  it("keeps the service token out of the slide page served to the browser", async () => {
+    process.env.SANDBOX_SERVICE_TOKEN = "secret-token";
+    const res = await get("/slides/s1", { "sec-fetch-dest": "iframe" });
+    expect(res.status).toBe(200);
+    // The secret is server-side only — it never lands in browser-facing bytes.
+    expect(await res.text()).not.toContain("secret-token");
   });
 
   it("requests the backend with a URL-encoded slide id", async () => {
