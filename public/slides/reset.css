@@ -1,8 +1,13 @@
 /* Minimal reset + canvas for the slide demo page (served at
  * /slides/reset.css). The slide page is opaque-origin and app-owned; the
  * LLM bundle receives this canvas and styles everything else itself.
- * Background-agnostic by design: no palette is imposed, so each demo
- * carries its own background, colors, and card styling.
+ * Demo-agnostic by design: no palette is imposed on the demo area, so each
+ * demo carries its own colors and card styling. The canvas *behind* the
+ * demo (the document's `html` background) is themed from the app's palette
+ * tokens — palette.css (loaded from the app origin) defines `--background`
+ * for both themes; the fallback is the dark default in case it fails to
+ * load. This keeps the area below/around a shorter demo in the app's theme
+ * instead of the browser's opaque white frame canvas.
  */
 *,
 *::before,
@@ -10,7 +15,13 @@
   box-sizing: border-box;
 }
 
-html,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--background, #081425);
+}
+
 body {
   margin: 0;
   padding: 0;

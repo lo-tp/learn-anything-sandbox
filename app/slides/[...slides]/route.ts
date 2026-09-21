@@ -13,7 +13,7 @@
  *
  * | URL                               | Response                                                     |
  * |-----------------------------------|--------------------------------------------------------------|
- * | `/slides/harness.js`              | the deploy-built slides harness (`out/slides/harness.js`)     |
+ * | `/slides/{slide_id}?theme=light`  | the slide page with `<html class="light">` (theme sync, #78) |
  * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
  * | `/slides/{slide_id}/bundle.js`    | backend-fetched, pre-compiled slide — **no fetch-dest gate**   |
  * | `/slides/vendor/react.js`         | the deploy-built React (self-contained ESM)                  |
@@ -184,13 +184,24 @@ function contentTypeFor(file: string): string {
  * are served from `/slides/vendor/*` (one React instance). The import map is
  * generated from VENDOR_PACKAGES so it can never drift from the specifiers
  * the compile route leaves external.
+ *
+ * `?theme=light` puts the `light` class on `<html>` so the palette.css the
+ * page loads (from the app origin) resolves its light tokens — the frame
+ * then renders in the app's current theme (#78). Absent/dark keeps the
+ * classless default, whose `:root` is the dark palette.
  */
-function slidesPage(origin: string, mainOrigin: string, slideId: string): string {
+function slidesPage(
+  origin: string,
+  mainOrigin: string,
+  slideId: string,
+  theme: string | null,
+): string {
   const imports = Object.entries(VENDOR_PACKAGES)
     .map(([spec, file]) => `    "${spec}": "${file}"`)
     .join(",\n");
+  const htmlTag = theme === "light" ? '<html class="light">' : "<html>";
   return `<!DOCTYPE html>
-<html>
+${htmlTag}
 <head>
 <meta charset="utf-8">
 <script type="importmap">
@@ -252,8 +263,10 @@ export async function GET(
       return new Response("forbidden", { status: 403 });
     }
     const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS ?? "";
-    const origin = new URL(request.url).origin;
-    return new Response(slidesPage(origin, mainOrigin, slideId), {
+    const pageUrl = new URL(request.url);
+    const origin = pageUrl.origin;
+    const theme = pageUrl.searchParams.get("theme");
+    return new Response(slidesPage(origin, mainOrigin, slideId, theme), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",

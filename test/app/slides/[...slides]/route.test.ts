@@ -132,6 +132,44 @@ describe("the slide page (GET /slides/{id})", () => {
   it("403s a request with no Sec-Fetch-Dest at all", async () => {
     expect((await get("/slides/s1")).status).toBe(403);
   });
+
+  // The theme sync (#78): the caller appends ?theme= and the page puts the
+  // matching class on <html>. These call GET directly (the `get` helper's
+  // pathname split would swallow the query string).
+  it("puts the light class on <html> when ?theme=light", async () => {
+    const res = await GET(
+      new Request(`${ORIGIN}/slides/s1?theme=light`, { headers: IFRAME }),
+      { params: Promise.resolve({ slides: ["s1"] }) },
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('<html class="light">');
+  });
+
+  it("stays classless (dark) when ?theme=dark", async () => {
+    const res = await GET(
+      new Request(`${ORIGIN}/slides/s1?theme=dark`, { headers: IFRAME }),
+      { params: Promise.resolve({ slides: ["s1"] }) },
+    );
+    const html = await res.text();
+    expect(html).toContain("<html>\n");
+    expect(html).not.toContain('class="light"');
+  });
+
+  it("stays classless (dark) when no theme param is given", async () => {
+    const html = await (await get("/slides/s1", IFRAME)).text();
+    expect(html).toContain("<html>\n");
+    expect(html).not.toContain('class="light"');
+  });
+
+  it("treats an unknown theme value as dark", async () => {
+    const res = await GET(
+      new Request(`${ORIGIN}/slides/s1?theme=bogus`, { headers: IFRAME }),
+      { params: Promise.resolve({ slides: ["s1"] }) },
+    );
+    const html = await res.text();
+    expect(html).toContain("<html>\n");
+    expect(html).not.toContain('class="light"');
+  });
 });
 
 describe("the per-slide bundle (GET /slides/{id}/bundle.js)", () => {
