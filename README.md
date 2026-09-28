@@ -1,8 +1,8 @@
-# learn-anything
+# learn-anything-sandbox
 
-Development home for the **slide demo surface** of [`learn-anything`](https://github.com/lo-tp/learn-anything): the `/slides/*` delivery route (harness/vendor artifacts, per-request esbuild-compiled slide bundles, per-slide pages/bundles), the trusted harness + vendor sources, and the build tooling.
+Development home for the **slide demo surface** of the `learn-anything` project: the `/slides/*` delivery route (harness/vendor artifacts, per-request esbuild-compiled slide bundles, per-slide pages/bundles), the trusted harness + vendor sources, and the build tooling.
 
-Provenance: extracted from `lo-tp/learn-anything`. Design lives in main's [`docs/demos.md`](https://github.com/lo-tp/learn-anything/blob/main/docs/demos.md) and [ADR 0007](https://github.com/lo-tp/learn-anything/blob/main/docs/adr/0007-demos-in-opaque-origin-sandbox.md); related issues [#32](https://github.com/lo-tp/learn-anything/issues/32), [#36](https://github.com/lo-tp/learn-anything/issues/36), [#37](https://github.com/lo-tp/learn-anything/issues/37).
+Provenance: extracted from the author's `learn-anything` project (a private repository — the design docs, ADR 0007, and tracking issues live there and are not linked from this public repo).
 
 This is a **standalone host app** (own dev server, own origin) — a development home, not a production deploy.
 
