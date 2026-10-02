@@ -33,7 +33,9 @@ function mockFetch(res: Response) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   delete process.env.SANDBOX_SERVICE_TOKEN;
+  delete process.env.SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS;
 });
 
 describe("deploy-built slides harness", () => {
@@ -132,6 +134,49 @@ describe("the slide page (GET /slides/{id})", () => {
 
   it("403s a request with no Sec-Fetch-Dest at all", async () => {
     expect((await get("/slides/s1")).status).toBe(403);
+  });
+
+  // The dev escape hatch (SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS): with the switch
+  // on, a slide URL can be pasted straight into a browser tab.
+  it("serves the page to a top-level tab when the dev switch is on", async () => {
+    process.env.SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS = "true";
+    const res = await get("/slides/s1", { "sec-fetch-dest": "document" });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    // Same page as the iframe gets: the module graph still needs CORS.
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(await res.text()).toContain('window.DEMO = { slug: "s1", parts: 1 }');
+  });
+
+  it("still 403s a tab for any other switch value", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    process.env.SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS = "yes";
+    try {
+      expect(
+        (await get("/slides/s1", { "sec-fetch-dest": "document" })).status,
+      ).toBe(403);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("ignores the dev switch when NODE_ENV is production", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    process.env.SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS = "true";
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(
+        (await get("/slides/s1", { "sec-fetch-dest": "document" })).status,
+      ).toBe(403);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still serves the page to an iframe in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect((await get("/slides/s1", IFRAME)).status).toBe(200);
   });
 
   // The theme sync (#78): the caller appends ?theme= and the page puts the

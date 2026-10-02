@@ -16,6 +16,8 @@ npm run dev
 
 The `/slides/*` route serves backend-fed slide demos: each `/slides/{slide_id}` fetches the slide TSX from the backend, compiles it per request with esbuild, and serves it in an opaque-origin iframe.
 
+By default the slide page is iframe-only (403 for a top-level tab), so LLM-authored slide code never runs in an app origin. While developing, set `SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS=true` in the gitignored `.env.local` to open `http://localhost:3001/slides/{slide_id}?theme=light` directly in a browser tab (the switch is ignored when `NODE_ENV=production`; see `core/direct-slide-access.ts`).
+
 `predev`/`prebuild`/`pretest` run `build:vendor` (`node scripts/build-sandbox.mjs`), which esbuilds `out/slides/harness.js` + `out/slides/vendor/*.js` (React, KaTeX).
 
 Quality gates: `npm run typecheck` and `npm test`.

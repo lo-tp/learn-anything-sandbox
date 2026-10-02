@@ -18,7 +18,7 @@
  * | URL                               | Response                                                     |
  * |-----------------------------------|--------------------------------------------------------------|
  * | `/slides/{slide_id}?theme=light`  | the slide page with `<html class="light">` (theme sync, #78) |
- * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`** |
+ * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`**, except in dev with `SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS=true` (see core/direct-slide-access.ts) |
  * | `/slides/{slide_id}/bundle.js`    | backend-fetched, pre-compiled slide — **no fetch-dest gate**   |
  * | `/slides/vendor/react.js`         | the deploy-built React (self-contained ESM)                  |
  * | `/slides/vendor/react-jsx-runtime.js` | the deploy-built JSX runtime (`react` external)         |
@@ -36,6 +36,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { directSlideAccessEnabled } from "@/core/direct-slide-access";
 import { VENDOR_PACKAGES } from "@/core/vendor-packages";
 
 /** The slide page and bundle are rendered per request — they carry request-specific bytes. */
@@ -276,7 +277,13 @@ export async function GET(
     // The app-origin execution guard: an iframe navigation sends
     // `Sec-Fetch-Dest: iframe`; a top-level tab sends `document` (or nothing).
     // Without the gate the same URL would execute LLM code in app origin.
-    if (request.headers.get("sec-fetch-dest") !== "iframe") {
+    // Dev-only escape hatch: SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS=true opens it
+    // so a slide URL can be pasted straight into a tab (never in production).
+    const directAccess = directSlideAccessEnabled(
+      process.env.SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS,
+      process.env.NODE_ENV,
+    );
+    if (!directAccess && request.headers.get("sec-fetch-dest") !== "iframe") {
       return new Response("forbidden", { status: 403 });
     }
     const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS ?? "";
