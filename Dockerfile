@@ -85,6 +85,14 @@ COPY --from=build --chown=10001:10001 /app/out ./out
 COPY --from=build --chown=10001:10001 /app/next.config.ts ./next.config.ts
 COPY --from=build --chown=10001:10001 /app/core ./core
 
+# The working directory itself, not just what is in it. `WORKDIR /app` created it
+# root-owned, and `COPY --chown` only reaches the copied paths — so the first
+# version of this image started fine, answered `/api/compile`, and failed inside
+# the handler with `EACCES: permission denied, open '/app/compile-gate-….cjs'`.
+# The directory needs to be writable by the process for that write to be possible,
+# which is a different claim from "its files are owned by the app user".
+RUN chown 10001:10001 /app
+
 USER 10001
 EXPOSE 3001
 
