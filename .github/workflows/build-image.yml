@@ -62,7 +62,11 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name == 'push' }}
+          # Not pushed from here: the smoke step below has to pass first. An image
+          # that cannot serve a request should not be in the registry with a
+          # `sha-<commit>` tag on it, because the next person to deploy would find
+          # it there and reasonably assume it had been run.
+          push: false
           # Load it into the runner's Docker as well, so the step below can run
           # the artifact this job just built. A build that succeeds proves the
           # compile steps ran; it does not prove the image can answer a request.
@@ -99,6 +103,11 @@ jobs:
           [ "$code" = 200 ] || { docker logs sb-smoke; exit 1; }
           jq -e '.code | length > 0' /tmp/compile.json > /dev/null
           docker rm -f sb-smoke
+
+      # Published only after the smoke step passed, and only from `main`.
+      - if: github.event_name == 'push'
+        name: Publish the image
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}
 
       - if: github.event_name == 'push'
         run: |
