@@ -1,0 +1,111 @@
+# Builds the sandbox image and pushes it to Artifact Registry. Same authentication
+# path as the other two repositories (Workload Identity Federation from
+# lo-tp/learn-anything-infra, provider addressed by project number, registry token
+# minted with gcloud) — the details are written out once in the backend's workflow
+# and the infra AGENTS.md, and repeated here only where they differ.
+#
+# Nothing environment-specific is baked into this image: the sandbox reads
+# ALLOWED_FRAME_ANCESTORS, NEXT_PUBLIC_BACKEND_URL and SANDBOX_SERVICE_TOKEN at
+# runtime, so the artifact is the same for staging and production. That is the
+# opposite of the frontend, where the origins are inlined at build time, and the
+# difference between the two workflows is exactly that.
+
+name: build image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: learn-anything-510905
+  REGISTRY: asia-east2-docker.pkg.dev/learn-anything-510905/learn-anything
+  IMAGE: learn-anything-sandbox
+  WIF_PROVIDER: projects/358071090957/locations/global/workloadIdentityPools/learn-anything-github/providers/lo-tp-learn-anything-sandbox
+  WIF_SERVICE_ACCOUNT: deploy-ci@learn-anything-510905.iam.gserviceaccount.com
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+          access_token_lifetime: 1800s
+
+      - id: ar_token
+        name: Access token for Artifact Registry
+        run: |
+          token=$(gcloud auth print-access-token)
+          [ -n "$token" ] || { echo "::error::no access token; the workload identity step did not leave a usable credential" >&2; exit 1; }
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: oauth2accesstoken
+          password: ${{ steps.ar_token.outputs.token }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name == 'push' }}
+          # Load it into the runner's Docker as well, so the step below can run
+          # the artifact this job just built. A build that succeeds proves the
+          # compile steps ran; it does not prove the image can answer a request.
+          load: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image's own contract, checked against the artifact rather than against
+      # the source tree: the compiled fixtures and the resolvable runtime
+      # dependencies must be in there, and the two request-time features (the
+      # TypeScript compile gate and its temp files in the working directory) must
+      # work under the image's user. This is the half of PLAN.md M2's gate that a
+      # build cannot prove.
+      - name: Smoke test the image
+        run: |
+          set -euo pipefail
+          docker run -d --name sb-smoke -p 3001:3001 -e SANDBOX_SERVICE_TOKEN=smoke-test \
+            ${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}
+          # Readiness by the route this smoke test is about: an empty body is a
+          # 400, which means the server is up and the handler runs. Probing `/`
+          # would depend on a landing page existing.
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' http://127.0.0.1:3001/api/compile || true)
+            if [ "$code" = 400 ]; then break; fi
+            sleep 2
+            if [ "$i" = 30 ]; then echo "never became ready (last code: $code)"; docker logs sb-smoke; exit 1; fi
+          done
+          docker exec sb-smoke sh -c 'test -f out/slides/harness.js && test -d out/slides/vendor && test -f node_modules/react/package.json'
+          body='{"code":"export default function Counter(){const [n,setN]=React.useState(0);return <button onClick={() => setN(n + 1)}>count {n}</button>}"}'
+          code=$(curl -sS -o /tmp/compile.json -w '%{http_code}' -X POST -H 'content-type: application/json' --data "$body" http://127.0.0.1:3001/api/compile)
+          echo "compile -> $code"; head -c 300 /tmp/compile.json; echo
+          [ "$code" = 200 ] || { docker logs sb-smoke; exit 1; }
+          jq -e '.code | length > 0' /tmp/compile.json > /dev/null
+          docker rm -f sb-smoke
+
+      - if: github.event_name == 'push'
+        run: |
+          {
+            echo "## Image"
+            echo "- tag: \`${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}\`"
+            echo "- digest: \`${{ steps.build.outputs.digest }}\`"
+            echo
+            echo "Pin the digest in learn-anything-infra \`manifests/overlays/prod/kustomization.yaml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
