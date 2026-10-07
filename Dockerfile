@@ -38,7 +38,14 @@ FROM node:24-slim AS prod-install
 WORKDIR /app
 COPY package.json package-lock.json ./
 ARG NPM_REGISTRY
-RUN npm ci --omit=dev ${NPM_REGISTRY:+--registry=$NPM_REGISTRY}
+# `--ignore-scripts` because package.json's `prepare` hook runs `husky`, a
+# devDependency this stage deliberately does not install — the first build of this
+# file failed with exit 127 for exactly that reason. Lifecycle hooks are skipped
+# wholesale, and the one worth thinking about is esbuild's postinstall: it does not
+# fetch anything here, it verifies a binary that arrives as a platform-specific
+# optional dependency, and the smoke test in the CI workflow proves it works by
+# compiling something.
+RUN npm ci --omit=dev --ignore-scripts ${NPM_REGISTRY:+--registry=$NPM_REGISTRY}
 
 FROM node:24-slim AS build
 WORKDIR /app
