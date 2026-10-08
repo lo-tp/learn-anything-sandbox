@@ -80,8 +80,11 @@ COPY --from=build --chown=10001:10001 /app/public ./public
 # The generated compile fixtures (harness, vendor bundles). Read from disk on every
 # slide request, so they ship with the image.
 COPY --from=build --chown=10001:10001 /app/out ./out
-# `next start` evaluates next.config.ts at startup (the CSP `frame-ancestors`
-# headers come from it), so the config and the module it imports are runtime files.
+# Kept as runtime files rather than trimmed. `next start` does read next.config.ts,
+# but not for the CSP: `headers()` is evaluated at build time and frozen into
+# .next/routes-manifest.json, which is why frame-ancestors is set per request in
+# middleware.ts instead. Left in place because stripping config this build does not
+# need today is a guess about tomorrow.
 COPY --from=build --chown=10001:10001 /app/next.config.ts ./next.config.ts
 COPY --from=build --chown=10001:10001 /app/core ./core
 

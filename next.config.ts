@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import { frameAncestorsPolicy } from "./core/frame-ancestors";
 
 const nextConfig: NextConfig = {
   /* config options here */
@@ -9,24 +8,13 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["esbuild", "typescript"],
 
   /**
-   * Who may embed this app in an `<iframe>`: CSP `frame-ancestors` on
-   * every response. The allowlist is `ALLOWED_FRAME_ANCESTORS` in `.env`
-   * (see core/frame-ancestors.ts): `'self'` is always allowed, and an
-   * unset/empty value fails secure to `'self'` only.
+   * No `headers()` block here, deliberately. `headers()` is evaluated while
+   * **building** and written into `.next/routes-manifest.json`, which `next start`
+   * replays — so whatever it reads is the build's environment, never the
+   * container's. The CSP `frame-ancestors` policy is set per request in
+   * `middleware.ts` from `ALLOWED_FRAME_ANCESTORS`; the allowlist and its
+   * fail-secure default stay in `core/frame-ancestors.ts`.
    */
-  async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: frameAncestorsPolicy(process.env.ALLOWED_FRAME_ANCESTORS),
-          },
-        ],
-      },
-    ];
-  },
 };
 
 export default nextConfig;

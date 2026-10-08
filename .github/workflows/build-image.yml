@@ -86,6 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run -d --name sb-smoke -p 3001:3001 -e SANDBOX_SERVICE_TOKEN=smoke-test \
+            -e ALLOWED_FRAME_ANCESTORS=https://smoke-ancestor.example \
             ${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}
           # Readiness by the route this smoke test is about: an empty body is a
           # 400, which means the server is up and the handler runs. Probing `/`
@@ -102,6 +103,20 @@ jobs:
           echo "compile -> $code"; head -c 300 /tmp/compile.json; echo
           [ "$code" = 200 ] || { docker logs sb-smoke; exit 1; }
           jq -e '.code | length > 0' /tmp/compile.json > /dev/null
+          # The header as the *container* serves it, from the runtime environment.
+          # This is the assertion that was missing: the policy used to come from
+          # `next.config.ts` `headers()`, which Next evaluates while building and
+          # freezes into .next/routes-manifest.json — so production sent
+          # `frame-ancestors 'self'`, the app's <iframe> was blocked
+          # (net::ERR_BLOCKED_BY_RESPONSE), and every slide came up blank while the
+          # unit tests for the policy builder all passed. A unit test that asserts a
+          # config object is not a test of the shipped response.
+          csp=$(curl -sS -D - -o /dev/null http://127.0.0.1:3001/ | tr -d '\r' | grep -i '^content-security-policy:' || true)
+          echo "served CSP header: ${csp:-<none>}"
+          case "$csp" in
+            *"frame-ancestors 'self' https://smoke-ancestor.example"*) ;;
+            *) echo "the CSP frame-ancestors policy did not come from the runtime env"; docker logs sb-smoke; exit 1 ;;
+          esac
           docker rm -f sb-smoke
 
       # Published only after the smoke step passed, and only from `main`.

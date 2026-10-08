@@ -1,14 +1,21 @@
 /**
  * Unit tests for the CSP frame-ancestors allowlist (core/frame-ancestors.ts).
  *
- * The policy is what next.config.ts sends as `Content-Security-Policy` on
- * every response — it controls which origins may embed this app in an
- * `<iframe>`. The policy builder is exercised directly, plus one wiring
- * check on the config's `headers()` entry.
+ * The policy is what the app sends as `Content-Security-Policy` on every
+ * response — it controls which origins may embed this app in an `<iframe>`. The
+ * policy builder is exercised directly, plus one wiring check on the middleware
+ * that actually sends it.
+ *
+ * That wiring check used to target `nextConfig.headers()`, and it passed while
+ * production was broken: `headers()` is evaluated at build time and frozen into
+ * `.next/routes-manifest.json`, so the container's `ALLOWED_FRAME_ANCESTORS`
+ * never reached the header. Testing the unit is not testing the shipped
+ * behaviour — the header is asserted against the response the container produces
+ * in the image smoke test (.github/workflows/build-image.yml).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { frameAncestorsPolicy } from "@/core/frame-ancestors";
-import nextConfig from "../next.config";
+import { middleware } from "../middleware";
 
 describe("frameAncestorsPolicy", () => {
   it("fails secure to 'self' when unset or empty", () => {
@@ -48,28 +55,20 @@ describe("frameAncestorsPolicy", () => {
   });
 });
 
-describe("next.config.ts wiring", () => {
+describe("middleware wiring", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("sends the env allowlist as frame-ancestors CSP on every route", async () => {
+  it("sends the runtime allowlist as the response's CSP header", () => {
     vi.stubEnv("ALLOWED_FRAME_ANCESTORS", "https://example.com");
-    const entries = await nextConfig.headers!();
-    expect(entries).toEqual([
-      {
-        source: "/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: "frame-ancestors 'self' https://example.com",
-          },
-        ],
-      },
-    ]);
+    const response = middleware(new Request("https://sandbox.test/slides/x") as never);
+    expect(response.headers.get("content-security-policy")).toBe(
+      "frame-ancestors 'self' https://example.com",
+    );
   });
 
-  it("falls back to 'self' only when the env var is unset", async () => {
-    vi.stubEnv("ALLOWED_FRAME_ANCESTORS", undefined);
-    const entries = await nextConfig.headers!();
-    expect(entries?.[0]?.headers?.[0]?.value).toBe("frame-ancestors 'self'");
+  it("fails secure to 'self' when the runtime env is empty", () => {
+    vi.stubEnv("ALLOWED_FRAME_ANCESTORS", "");
+    const response = middleware(new Request("https://sandbox.test/") as never);
+    expect(response.headers.get("content-security-policy")).toBe("frame-ancestors 'self'");
   });
 });
