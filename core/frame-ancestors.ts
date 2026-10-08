@@ -13,6 +13,19 @@
 /** A frame-ancestors source: a scheme, then `://` (host, optional port). */
 const CSP_ORIGIN = /^[a-z][a-z0-9+.-]*:\/\//i;
 
+/**
+ * The first allowed ancestor, as an origin URL — the one the slide page links
+ * its palette stylesheet to, because palette.css belongs to the app, not here.
+ * `undefined` when the allowlist is unset or holds nothing usable, which the
+ * page treats as "link no palette" rather than emitting a broken href.
+ */
+export function firstFrameAncestor(raw: string | undefined): string | undefined {
+  for (const entry of (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean)) {
+    if (CSP_ORIGIN.test(entry)) return entry.replace(/\/+$/, "");
+  }
+  return undefined;
+}
+
 export function frameAncestorsPolicy(raw: string | undefined): string {
   const sources = ["'self'"];
   for (const entry of (raw ?? "")

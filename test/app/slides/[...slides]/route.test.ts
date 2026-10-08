@@ -122,10 +122,34 @@ describe("the slide page (GET /slides/{id})", () => {
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
     expect(html).toContain(`<script type="module" src="/slides/harness.js"></script>`);
-    // reset.css is served from the /slides surface (the link only).
-    expect(html).toContain(`${ORIGIN}/slides/reset.css`);
-    // The KaTeX stylesheet (link) is served from the /slides vendor surface.
-    expect(html).toContain(`${ORIGIN}/slides/vendor/katex.css`);
+    // reset.css and katex.css are linked root-relative. They used to be built from the
+    // request's own origin, which in a pod is the server's origin — so a browser framing a
+    // slide fetched https://localhost:3001/slides/reset.css and got
+    // ERR_CONNECTION_REFUSED: every slide rendered as unstyled text with no KaTeX, while
+    // this assertion passed, because the test's synthetic request *was* a localhost origin.
+    // Nothing under /slides/* needs an origin at all.
+    expect(html).toContain('<link rel="stylesheet" href="/slides/reset.css">');
+    expect(html).toContain('<link rel="stylesheet" href="/slides/vendor/katex.css">');
+    expect(html).not.toMatch(/href="https?:\/\/(localhost|127\.0\.0\.1)/);
+  });
+
+  it("links palette.css to the first allowed ancestor, and omits it when unset", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv(
+      "ALLOWED_FRAME_ANCESTORS",
+      "https://learn.lotp.xyz,https://staging.learn.lotp.xyz",
+    );
+    const html = await (await get("/slides/s1", IFRAME)).text();
+    // The one asset that is not ours: palette.css belongs to the app. The first
+    // entry, not the comma-separated list — joining the list into a single href is
+    // how adding a second environment would silently break theming.
+    expect(html).toContain('<link rel="stylesheet" href="https://learn.lotp.xyz/palette.css">');
+    expect(html).not.toContain("staging.learn.lotp.xyz/palette.css");
+
+    vi.stubEnv("ALLOWED_FRAME_ANCESTORS", "");
+    const bare = await (await get("/slides/s1", IFRAME)).text();
+    expect(bare).not.toContain("palette.css");
+    expect(bare).toContain('<link rel="stylesheet" href="/slides/reset.css">');
   });
 
   it("403s a top-level tab (Sec-Fetch-Dest: document)", async () => {

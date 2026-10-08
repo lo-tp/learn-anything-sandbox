@@ -37,6 +37,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { directSlideAccessEnabled } from "@/core/direct-slide-access";
+import { firstFrameAncestor } from "@/core/frame-ancestors";
 import { VENDOR_PACKAGES } from "@/core/vendor-packages";
 
 /** The slide page and bundle are rendered per request — they carry request-specific bytes. */
@@ -209,8 +210,7 @@ function contentTypeFor(file: string): string {
  * classless default, whose `:root` is the dark palette.
  */
 function slidesPage(
-  origin: string,
-  mainOrigin: string,
+  mainOrigin: string | undefined,
   slideId: string,
   theme: string | null,
 ): string {
@@ -218,6 +218,11 @@ function slidesPage(
     .map(([spec, file]) => `    "${spec}": "${file}"`)
     .join(",\n");
   const htmlTag = theme === "light" ? '<html class="light">' : "<html>";
+  // The one cross-origin asset: palette.css belongs to the app, so it points at
+  // the first allowed ancestor — or is omitted, rather than emitting a broken href.
+  const paletteLink = mainOrigin
+    ? `<link rel="stylesheet" href="${mainOrigin}/palette.css">`
+    : "";
   return `<!DOCTYPE html>
 ${htmlTag}
 <head>
@@ -227,9 +232,9 @@ ${htmlTag}
 ${imports}
 } }
 </script>
-<link rel="stylesheet" href="${origin}/slides/reset.css">
-<link rel="stylesheet" href="${mainOrigin}/palette.css">
-<link rel="stylesheet" href="${origin}/slides/vendor/katex.css">
+<link rel="stylesheet" href="/slides/reset.css">
+${paletteLink}
+<link rel="stylesheet" href="/slides/vendor/katex.css">
 </head>
 <body>
 <div id="root"></div>
@@ -286,11 +291,18 @@ export async function GET(
     if (!directAccess && request.headers.get("sec-fetch-dest") !== "iframe") {
       return new Response("forbidden", { status: 403 });
     }
-    const mainOrigin = process.env.ALLOWED_FRAME_ANCESTORS ?? "";
-    const pageUrl = new URL(request.url);
-    const origin = pageUrl.origin;
-    const theme = pageUrl.searchParams.get("theme");
-    return new Response(slidesPage(origin, mainOrigin, slideId, theme), {
+    // Asset links are root-relative on purpose. They used to be built from
+    // `new URL(request.url).origin`, which inside the pod is the server's own
+    // origin (`http://localhost:3001`), so a browser framing a slide asked *its
+    // own* localhost for reset.css and katex.css: `ERR_CONNECTION_REFUSED`, an
+    // unstyled slide with KaTeX missing — the "the text is there but it renders
+    // wrong" symptom. Everything under `/slides/*` is served by this same origin,
+    // so no origin is needed (the body's `harness.js` link was already relative,
+    // which is why anything rendered at all). The only cross-origin asset is
+    // palette.css, and it takes the first configured ancestor, not the list.
+    const mainOrigin = firstFrameAncestor(process.env.ALLOWED_FRAME_ANCESTORS);
+    const theme = new URL(request.url).searchParams.get("theme");
+    return new Response(slidesPage(mainOrigin, slideId, theme), {
       headers: {
         "Content-Type": "text/html; charset=utf-8",
         "Cache-Control": "no-store",
