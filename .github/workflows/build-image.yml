@@ -143,7 +143,7 @@ jobs:
           esac
           docker rm -f sb-smoke
 
-      # Published only after the smoke step passed, and only from `main`.
+      # Published only after the smoke step passed, and only from `release`.
       - if: github.event_name == 'push'
         name: Publish the image
         run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}
@@ -155,5 +155,29 @@ jobs:
             echo "- tag: \`${{ env.REGISTRY }}/${{ env.IMAGE }}:sha-${{ github.sha }}\`"
             echo "- digest: \`${{ steps.build.outputs.digest }}\`"
             echo
-            echo "Pin the digest in learn-anything-infra \`manifests/overlays/prod/kustomization.yaml\`."
+            echo "Handed to learn-anything-infra: that repository pins this digest and deploys it."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The image exists and its smoke step passed, so the deciding is done. Hand the
+      # delivery over: the infrastructure repository pins this digest and runs the
+      # deploy order (secrets, migration gate, apply, rollout, the drift check, the
+      # public surfaces). `workflow_run` cannot cross repositories — verified, not
+      # assumed — so this is an explicit dispatch. One repository secret is needed for
+      # it: `DELIVERY_TOKEN`, a fine-grained PAT allowed to start workflows in
+      # lo-tp/learn-anything-infra and nothing else. If it is absent this job warns
+      # instead of failing: the image is already published, and that repository
+      # reconciles on a schedule regardless.
+      - name: Hand the delivery to the infrastructure repository
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.DELIVERY_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::DELIVERY_TOKEN is not set in this repository, so nothing was dispatched; learn-anything-infra will pick this image up at its next scheduled reconciliation."
+            exit 0
+          fi
+          gh workflow run deliver.yml --repo lo-tp/learn-anything-infra --ref main \
+            -f source_run="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f source_repo="$GITHUB_REPOSITORY" \
+            -f source_branch="$GITHUB_REF_NAME"
+          echo "dispatched deliver.yml in lo-tp/learn-anything-infra from $GITHUB_REF_NAME"
