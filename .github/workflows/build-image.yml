@@ -13,8 +13,12 @@
 name: build image
 
 on:
+  # `main` is verified, never published. `release` is the only branch that builds
+  # and pushes an image: promoting main into `release` (by merge, never by
+  # committing on it) is the human act that means "this goes live", and
+  # lo-tp/learn-anything-infra pins the digest that comes out of it.
   push:
-    branches: [main]
+    branches: [main, release]
   pull_request:
   workflow_dispatch:
 
@@ -30,7 +34,27 @@ env:
   WIF_SERVICE_ACCOUNT: deploy-ci@learn-anything-510905.iam.gserviceaccount.com
 
 jobs:
+  # Lint, typecheck and unit tests in CI, before anything is built — the same
+  # commands `npm run check` chains locally. Node is pinned to the major the image
+  # uses (`FROM node:24-slim` in the Dockerfile): checking a different runtime than
+  # the one that ships is how a green CI and a broken image coexist.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run check
+
   build:
+    needs: check
+    # Only `release` produces an image. Everything else is checked and stops there.
+    if: github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
