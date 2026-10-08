@@ -158,15 +158,15 @@ jobs:
             echo "Handed to learn-anything-infra: that repository pins this digest and deploys it."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The image exists and its smoke step passed, so the deciding is done. Hand the
+      # The image exists and passed its smoke test, so the deciding is done. Hand the
       # delivery over: the infrastructure repository pins this digest and runs the
       # deploy order (secrets, migration gate, apply, rollout, the drift check, the
       # public surfaces). `workflow_run` cannot cross repositories — verified, not
-      # assumed — so this is an explicit dispatch. One repository secret is needed for
-      # it: `DELIVERY_TOKEN`, a fine-grained PAT allowed to start workflows in
-      # lo-tp/learn-anything-infra and nothing else. If it is absent this job warns
-      # instead of failing: the image is already published, and that repository
-      # reconciles on a schedule regardless.
+      # assumed — so this is an explicit dispatch. The credential it needs is the
+      # repository secret `DELIVERY_TOKEN`: a fine-grained PAT allowed to start
+      # workflows in lo-tp/learn-anything-infra and nothing else. If that secret is
+      # ever removed, this job warns instead of failing: the image is already
+      # published, and that repository reconciles on a schedule regardless.
       - name: Hand the delivery to the infrastructure repository
         if: github.event_name == 'push'
         env:
