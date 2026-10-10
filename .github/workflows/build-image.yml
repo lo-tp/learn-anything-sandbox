@@ -13,12 +13,13 @@
 name: build image
 
 on:
-  # `main` is verified, never published. `release` is the only branch that builds
-  # and pushes an image: promoting main into `release` (by merge, never by
-  # committing on it) is the human act that means "this goes live", and
-  # lo-tp/learn-anything-infra pins the digest that comes out of it.
+  # Git Flow: `develop` and `main` are verified, never published. `release` is the
+  # only branch that builds and pushes an image: promoting main into `release` (by
+  # merge, never by committing on it) is the human act that means "this goes live",
+  # and lo-tp/learn-anything-infra pins the digest that comes out of it. `develop`
+  # is in the push list so integration is checked on arrival, not only at the PR.
   push:
-    branches: [main, release]
+    branches: [develop, main, release]
   pull_request:
   workflow_dispatch:
 
