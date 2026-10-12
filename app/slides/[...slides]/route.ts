@@ -17,7 +17,7 @@
  *
  * | URL                               | Response                                                     |
  * |-----------------------------------|--------------------------------------------------------------|
- * | `/slides/{slide_id}?theme=light`  | the slide page with `<html class="light">` (theme sync, #78) |
+ * | `/slides/{slide_id}?theme=light`  | the slide page with `<html class="light">` (theme sync, #78 — the frame's *initial* paint; a later theme change arrives as `DEMO_SET_THEME`, #185) |
  * | `/slides/{slide_id}`              | the slide page HTML — **403 unless `Sec-Fetch-Dest: iframe`**, except in dev with `SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS=true` (see core/direct-slide-access.ts) |
  * | `/slides/{slide_id}/bundle.js`    | backend-fetched, pre-compiled slide — **no fetch-dest gate**   |
  * | `/slides/vendor/react.js`         | the deploy-built React (self-contained ESM)                  |
@@ -208,6 +208,12 @@ function contentTypeFor(file: string): string {
  * page loads (from the app origin) resolves its light tokens — the frame
  * then renders in the app's current theme (#78). Absent/dark keeps the
  * classless default, whose `:root` is the dark palette.
+ *
+ * This is the frame's *initial* paint only. A theme change after that is not
+ * a URL change: it arrives as `DEMO_SET_THEME` and the harness toggles the
+ * same class in place (#185). Keeping `?theme=` is what lets a direct-tab /
+ * dev visit (`SANDBOX_ALLOW_DIRECT_SLIDE_ACCESS`) and a cold frame load in
+ * the right palette without a round trip.
  */
 function slidesPage(
   mainOrigin: string | undefined,

@@ -17,12 +17,28 @@
  * per-slide bundle is loaded with a dynamic `import()` — an import is not a
  * navigation, so it appends no history entry.
  *
+ * #185 — likewise no theme reload. `?theme=` (see `app/slides/[...slides]`)
+ * sets the *initial* paint; a theme change afterwards arrives as
+ * `DEMO_SET_THEME` and is applied by toggling the `light` class on this
+ * frame's own `<html>`. `public/palette.css` carries both palettes, so the
+ * whole frame repaints with no reload: no re-fetch of the slide bundle, no
+ * replayed entrance animation, no lost in-slide state. Deliberately *not*
+ * React state — a theme change must not re-render (let alone remount)
+ * anything.
+ *
+ * The parent's first `DEMO_SET_SLIDE` / `DEMO_SET_THEME` can race this
+ * module's mount (the listener is attached in an effect), so once it *is*
+ * attached the harness posts `SANDBOX_READY`: the parent re-posts the current
+ * theme and slide, and neither can be lost to the mount race.
+ *
  * Cross-boundary surface:
  *
  * | direction        | message                     | here |
  * |------------------|-----------------------------|------|
  * | parent → iframe  | `DEMO_SET_PART {part}` (integer) | clamped to `0..parts−1` |
  * | parent → iframe  | `DEMO_SET_SLIDE {slideId}`  | non-empty string → swaps the rendered slide in state, no navigation (#80) |
+ * | parent → iframe  | `DEMO_SET_THEME {theme}`    | `"light" \| "dark"` → toggles the `light` class on this frame's `<html>`, no reload (#185) |
+ * | iframe → parent  | `SANDBOX_READY`             | emitted once the message listener is attached — the parent's cue to re-post theme + slide (#185) |
  * | iframe → parent  | `SANDBOX_RESIZE {height}`   | body scrollHeight |
  * | iframe → parent  | `SANDBOX_ERROR {message}`   | boundary callback |
  */
@@ -136,8 +152,21 @@ function SlidesApp({ initialSlug, parts }: SlidesAppProps) {
       const command = parseSlideMessage(event.data, parts);
       if (command?.type === "part") setPart(command.part);
       else if (command?.type === "slide") setSlug(command.slug);
+      // A theme is DOM, not state: toggling the class the palette switches
+      // on repaints the frame in place. No `setX` here on purpose — re-render
+      // would replay the slide, which is the thing #185 is about.
+      else if (command?.type === "theme")
+        document.documentElement.classList.toggle(
+          "light",
+          command.theme === "light",
+        );
     };
     addEventListener("message", onMessage);
+    // The listener exists now — tell the parent, so it can re-post the
+    // current theme and slide. A post that arrived before this line (or
+    // before React mounted) was dropped; `SANDBOX_READY` is what turns that
+    // race into a retry instead of a wrong first paint (#185).
+    postToParent({ type: "SANDBOX_READY" });
     return () => removeEventListener("message", onMessage);
     // `parts` is the page-injected constant (trusted DEMO meta); it never
     // changes, but it is a prop, so it stays in the deps list for the linter.
