@@ -31,19 +31,24 @@
  * Every response carries `Access-Control-Allow-Origin: *`: the opaque-origin
  * iframe loads its module scripts in **CORS mode**, so without the header the
  * module graph fails to load outright. The harness and vendor are `immutable`
- * (built at deploy); the slide page and bundle are `no-store` (per-request
- * origin / backend content).
+ * (built at deploy), and because they are immutable the page asks for them at
+ * a URL that carries the identity of their bytes (`?v=<sha256-12>`, see
+ * core/asset-stamp.ts) — an immutable URL must be the bytes, or a browser that
+ * framed one slide page runs that build for a year (#185). The slide page and
+ * bundle are `no-store` (per-request origin / backend content).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { directSlideAccessEnabled } from "@/core/direct-slide-access";
 import { firstFrameAncestor } from "@/core/frame-ancestors";
+import { stampUrl } from "@/core/asset-stamp";
 import { VENDOR_PACKAGES } from "@/core/vendor-packages";
 
 /** The slide page and bundle are rendered per request — they carry request-specific bytes. */
 export const dynamic = "force-dynamic";
 
-/** Honest-immutability for the deploy-built harness (built at deploy). */
+/** Immutability for the deploy-built artifacts — honest only because the page
+ * requests them at a URL carrying their bytes' identity (see `builtUrl`). */
 const IMMUTABLE = "public, max-age=31536000, immutable";
 const JS = "text/javascript; charset=utf-8";
 
@@ -128,6 +133,34 @@ async function slideBundle(slideId: string): Promise<Response> {
   return new Response(ensureKatexImports(data.content), {
     headers: { "Content-Type": JS, "Cache-Control": "no-store", ...CORSA },
   });
+}
+
+/**
+ * The URL for a deploy-built `/slides/*` artifact, carrying the identity of the
+ * bytes sitting at that path (#185).
+ *
+ * These files are served `immutable` for a year, and the ones that change are
+ * the ones built from this repository's own source — `harness.js` from
+ * `core/slides/framework.tsx`, `math-text.js` from `components/math-text.tsx`.
+ * At a constant URL a change to either is invisible to every browser that has
+ * already framed a slide page: a normal reload does not revalidate a resource
+ * that is still fresh. So the page asks for them at `?v=<identity>`, which
+ * changes exactly when their bytes do and never when they don't.
+ *
+ * Not the identity of the KaTeX stylesheet or its webfonts: those are copies of
+ * a pinned dependency, and the CSS names its `fonts/…` internally, so stamping
+ * them means rewriting that file — a separate change, not this one.
+ *
+ * Unbuilt (no `npm run build:vendor` yet) falls back to the plain URL; the
+ * asset route answers that with the 404 that names the command.
+ */
+function builtUrl(slidesUrl: string): string {
+  try {
+    const bytes = readFileSync(path.join(process.cwd(), "out", slidesUrl.slice(1)));
+    return stampUrl(slidesUrl, bytes);
+  } catch {
+    return slidesUrl;
+  }
 }
 
 /** The deploy-built slides harness lives in `out/slides/` (gitignored). */
@@ -221,7 +254,7 @@ function slidesPage(
   theme: string | null,
 ): string {
   const imports = Object.entries(VENDOR_PACKAGES)
-    .map(([spec, file]) => `    "${spec}": "${file}"`)
+    .map(([spec, file]) => `    "${spec}": "${builtUrl(file)}"`)
     .join(",\n");
   const htmlTag = theme === "light" ? '<html class="light">' : "<html>";
   // The one cross-origin asset: palette.css belongs to the app, so it points at
@@ -245,7 +278,7 @@ ${paletteLink}
 <body>
 <div id="root"></div>
 <script>window.DEMO = { slug: ${JSON.stringify(slideId)}, parts: 1 };</script>
-<script type="module" src="/slides/harness.js"></script>
+<script type="module" src="${builtUrl("/slides/harness.js")}"></script>
 </body>
 </html>
 `;

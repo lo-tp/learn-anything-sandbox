@@ -18,10 +18,13 @@ const ORIGIN = "http://localhost:3000";
 const BACKEND = "http://backend.test";
 const MARKER = "SLIDE_MARKER_12345";
 
-function get(pathname: string, headers: Record<string, string> = {}) {
+function get(pathnameAndQuery: string, headers: Record<string, string> = {}) {
+  // What the router hands the handler: the path segments as params, the query
+  // on the Request (stamped asset URLs — `/slides/harness.js?v=…` — carry one).
+  const [pathname, query] = pathnameAndQuery.split("?");
   const slides = pathname.split("/").filter(Boolean); // ["slides", ...rest]
   return GET(
-    new Request(`${ORIGIN}${pathname}`, { headers }),
+    new Request(`${ORIGIN}${pathname}${query ? `?${query}` : ""}`, { headers }),
     { params: Promise.resolve({ slides: slides.slice(1) }) },
   );
 }
@@ -101,6 +104,65 @@ describe("the KaTeX vendor (GET /slides/vendor/...)", () => {
   });
 });
 
+describe("the built artifacts' URLs carry their bytes' identity (#185)", () => {
+  const IFRAME = { "sec-fetch-dest": "iframe" };
+  const HARNESS = path.join(process.cwd(), "out/slides/harness.js");
+  const pageHtml = async () => (await get("/slides/s1", IFRAME)).text();
+  const harnessUrlIn = (html: string) =>
+    html.match(/<script type="module" src="(\/slides\/harness\.js[^"]*)"/)?.[1] ?? null;
+  const importMapIn = (html: string) =>
+    JSON.parse(
+      (html.match(/<script type="importmap">([\s\S]*?)<\/script>/) ?? [])[1] ?? "{}",
+    ).imports as Record<string, string>;
+
+  /*
+   * `/slides/harness.js` and the `/slides/vendor/*` artifacts are built at
+   * deploy and served `max-age=31536000, immutable`. Immutability is only
+   * honest while the URL *is* the bytes: at a constant path a browser that
+   * framed one slide page keeps running that build for a year, and a normal
+   * reload never asks the server. #185 is the concrete case — a frame still
+   * running the pre-#185 harness receives `DEMO_SET_THEME` and ignores it, so
+   * the theme switch does nothing, which is indistinguishable from the fix
+   * never having been written.
+   */
+  it("stamps the harness URL and every import-map entry with the identity of its bytes", async () => {
+    const html = await pageHtml();
+    expect(harnessUrlIn(html)).toMatch(/^\/slides\/harness\.js\?v=[0-9a-f]{12}$/);
+    const map = importMapIn(html);
+    for (const [spec, file] of Object.entries(VENDOR_PACKAGES)) {
+      const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      expect(map[spec]).toMatch(new RegExp(`^${escaped}\\?v=[0-9a-f]{12}$`));
+    }
+  });
+
+  it("serves a stamped URL with exactly the bytes the page asked for", async () => {
+    const url = harnessUrlIn(await pageHtml());
+    const res = await get(url!);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe(IMMUTABLE);
+    expect(await res.text()).toBe(readFileSync(HARNESS, "utf8"));
+  });
+
+  it("changes the URL when the built bytes change, and only then", async () => {
+    const original = readFileSync(HARNESS);
+    const before = harnessUrlIn(await pageHtml());
+    // Same bytes → same URL: an unchanged build keeps its cache forever.
+    expect(harnessUrlIn(await pageHtml())).toBe(before);
+    try {
+      writeFileSync(HARNESS, Buffer.concat([original, Buffer.from("\n// rebuilt\n")]));
+      const rebuilt = harnessUrlIn(await pageHtml());
+      // Different bytes → a different URL: a new build cannot be answered from
+      // a stale cache, and the page asks for the new one.
+      expect(rebuilt).not.toBe(before);
+      expect(await (await get(rebuilt!)).text()).toContain("// rebuilt");
+    } finally {
+      writeFileSync(HARNESS, original);
+    }
+    // Back to the original bytes → back to the original URL.
+    expect(harnessUrlIn(await pageHtml())).toBe(before);
+  });
+});
+
 describe("the slide page (GET /slides/{id})", () => {
   const IFRAME = { "sec-fetch-dest": "iframe" };
 
@@ -115,13 +177,22 @@ describe("the slide page (GET /slides/{id})", () => {
     // Drift guard: every shared vendor specifier (the same set the compile
     // route leaves external) is mapped to its vendor artifact.
     expect(html.indexOf('type="importmap"')).toBeGreaterThan(-1);
+    // The map maps each specifier to its artifact, and each artifact URL carries
+    // the identity of the bytes it serves (#185 — see the stamping block above).
+    const mapped = JSON.parse(
+      (html.match(/<script type="importmap">([\s\S]*?)<\/script>/) ?? [])[1] ?? "{}",
+    ).imports as Record<string, string>;
     for (const [spec, file] of Object.entries(VENDOR_PACKAGES)) {
-      expect(html).toContain(`"${spec}": "${file}"`);
+      expect(mapped[spec]).toMatch(
+        new RegExp(`^${file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\?v=[0-9a-f]{12}$`),
+      );
     }
     // The page we own: root div, demo meta (single part), slides harness boot.
     expect(html).toContain("<div id=\"root\"></div>");
     expect(html).toContain('window.DEMO = { slug: "s1", parts: 1 }');
-    expect(html).toContain(`<script type="module" src="/slides/harness.js"></script>`);
+    expect(
+      html.match(/<script type="module" src="(\/slides\/harness\.js[^"]*)"/)?.[1],
+    ).toMatch(/^\/slides\/harness\.js\?v=[0-9a-f]{12}$/);
     // reset.css and katex.css are linked root-relative. They used to be built from the
     // request's own origin, which in a pod is the server's origin — so a browser framing a
     // slide fetched https://localhost:3001/slides/reset.css and got
