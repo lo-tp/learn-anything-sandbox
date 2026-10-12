@@ -2,12 +2,21 @@
  * /slides/reset.css). The slide page is opaque-origin and app-owned; the
  * LLM bundle receives this canvas and styles everything else itself.
  * Demo-agnostic by design: no palette is imposed on the demo area, so each
- * demo carries its own colors and card styling. The canvas *behind* the
- * demo (the document's `html` background) is themed from the app's palette
- * tokens — palette.css (loaded from the app origin) defines `--background`
- * for both themes; the fallback is the dark default in case it fails to
- * load. This keeps the area below/around a shorter demo in the app's theme
- * instead of the browser's opaque white frame canvas.
+ * demo carries its own colors and card styling. The canvas itself — the ground
+ * behind the demo (`html` background) and the text anything in a bundle that
+ * never sets `color` inherits (`body color`, which KaTeX/MathJax then paint
+ * with through `currentColor`) — is themed from the app's palette tokens
+ * (#177). palette.css (loaded from the app origin) defines both themes, so the
+ * canvas carries no theme of its own: it takes the pair `--background` /
+ * `--on-background`, the two colors the palette designed against each other.
+ * Hardcoding either half is a default that is correct in exactly one theme —
+ * `#d0daff` read fine on the night desk (12.7:1) and near-invisibly on riso
+ * paper (1.24:1), which is the light-theme unreadability this fixes.
+ *
+ * The fallbacks are the palette's own classless `:root` (the night desk): that
+ * is what renders when palette.css cannot load — the slide page emits no palette
+ * link at all when ALLOWED_FRAME_ANCESTORS is unset — and it keeps the frame in
+ * the app's theme instead of the browser's opaque white canvas.
  */
 *,
 *::before,
@@ -19,7 +28,7 @@ html {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--background, #081425);
+  background: var(--background, #1d1813);
 }
 
 body {
@@ -30,7 +39,7 @@ body {
 
 body {
   min-height: 100vh;
-  color: #d0daff;
+  color: var(--on-background, #f4efe1);
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
