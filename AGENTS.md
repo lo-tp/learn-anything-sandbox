@@ -34,6 +34,15 @@ recorded in that infrastructure repository's
 rollback. Because every promotion is a merge, the commit a pin names stays
 reachable on `main`.
 
+Nothing enforces the first three bullets: `main` and `develop` accept a direct push,
+which is why some older commits sit on `main` by themselves. Only `release` is
+protected — required status check `check`, force-push and deletion disallowed — so a
+merge into it cannot bypass the gate. `enforce_admins` is off, so an admin push
+straight to `release` is possible, and it would build and ship unreviewed: that is the
+one move this model exists to make impossible, so it does not happen here. The branch
+model is a convention, and a convention exists only in being followed — cut the branch,
+open the PR.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
