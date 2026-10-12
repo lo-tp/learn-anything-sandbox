@@ -13,12 +13,13 @@
 name: build image
 
 on:
-  # `main` is verified, never published. `release` is the only branch that builds
-  # and pushes an image: promoting main into `release` (by merge, never by
-  # committing on it) is the human act that means "this goes live", and
-  # lo-tp/learn-anything-infra pins the digest that comes out of it.
+  # Git Flow: `develop` and `main` are verified, never published. `release` is the
+  # only branch that builds and pushes an image: promoting main into `release` (by
+  # merge, never by committing on it) is the human act that means "this goes live",
+  # and lo-tp/learn-anything-infra pins the digest that comes out of it. `develop`
+  # is in the push list so integration is checked on arrival, not only at the PR.
   push:
-    branches: [main, release]
+    branches: [develop, main, release]
   pull_request:
   workflow_dispatch:
 
@@ -158,22 +159,24 @@ jobs:
             echo "Handed to learn-anything-infra: that repository pins this digest and deploys it."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The image exists and its smoke step passed, so the deciding is done. Hand the
+      # The image exists and passed its smoke test, so the deciding is done. Hand the
       # delivery over: the infrastructure repository pins this digest and runs the
       # deploy order (secrets, migration gate, apply, rollout, the drift check, the
       # public surfaces). `workflow_run` cannot cross repositories — verified, not
-      # assumed — so this is an explicit dispatch. One repository secret is needed for
-      # it: `DELIVERY_TOKEN`, a fine-grained PAT allowed to start workflows in
-      # lo-tp/learn-anything-infra and nothing else. If it is absent this job warns
-      # instead of failing: the image is already published, and that repository
-      # reconciles on a schedule regardless.
+      # assumed — so this is an explicit dispatch. The credential it needs is the
+      # repository secret `DELIVERY_TOKEN`: a fine-grained PAT allowed to start
+      # workflows in lo-tp/learn-anything-infra and nothing else. If that secret is
+      # ever removed, this job warns instead of failing: the image is already
+      # published. The manual path is `make deliver` in lo-tp/learn-anything-infra:
+      # that repository has no timer, because a schedule that never ran is not a
+      # trigger, so without this secret nothing ships by itself.
       - name: Hand the delivery to the infrastructure repository
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ secrets.DELIVERY_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "::warning::DELIVERY_TOKEN is not set in this repository, so nothing was dispatched; learn-anything-infra will pick this image up at its next scheduled reconciliation."
+            echo "::warning::DELIVERY_TOKEN is not set in this repository, so nothing was dispatched. Ship it by hand: make deliver, in lo-tp/learn-anything-infra — that repository has no schedule, so this hand-off is the trigger."
             exit 0
           fi
           gh workflow run deliver.yml --repo lo-tp/learn-anything-infra --ref main \
