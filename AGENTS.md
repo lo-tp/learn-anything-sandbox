@@ -5,6 +5,21 @@ https://github.com/lo-tp/learn-anything-frontend/issues
 
 Use the `gh` CLI to fetch issues from that repository unless the user specifies otherwise. Example: `gh issue view 64 --repo lo-tp/learn-anything-frontend`
 
+### Priority
+
+Issues carry a priority label from `P0` (highest) to `P5` (lowest):
+
+| Label | Meaning |
+|---|---|
+| `P0` | Drop everything — active incident or data loss |
+| `P1` | Urgent — blocks shipping or a core flow is broken |
+| `P2` | High — important feature or regression, scheduled soon |
+| `P3` | Medium — valuable but not time-sensitive |
+| `P4` | Low — nice to have, no active pressure |
+| `P5` | Backlog — parked, revisit when capacity allows |
+
+When the user says "prioritise" or "set priority", apply the matching label via `gh issue edit <n> --repo lo-tp/learn-anything-frontend --add-label P<n>`.
+
 ## How a change here reaches a browser
 
 This repo follows Git Flow, adapted to its pipeline — the same branch model as
