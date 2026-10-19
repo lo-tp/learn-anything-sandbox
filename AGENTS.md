@@ -49,6 +49,17 @@ recorded in that infrastructure repository's
 rollback. Because every promotion is a merge, the commit a pin names stays
 reachable on `main`.
 
+Every promotion is a **merge commit** — the PR's merge commit, never its
+rebase or squash — and the same work lands on one branch at a time, never
+on two of `develop`, `main`, `release` (a cherry-pick across the pair
+counts as landing it twice); a hotfix is one commit merged into both `main`
+and `develop`. `feature/<slug>` → `develop` may be rebase-merged instead.
+If a promotion PR conflicts in files both branches recently touched, the
+lineages may be duplicated; diagnose before resolving: `git cherry
+<target> <source>` (a `-` line is work already on the target), `git
+merge-base <source> <target>`, `git merge-tree --write-tree <source>
+<target>` (the merge's conflicts, without touching a working tree).
+
 Nothing enforces the first three bullets: `main` and `develop` accept a direct push,
 which is why some older commits sit on `main` by themselves. Only `release` is
 protected — required status check `check`, force-push and deletion disallowed — so a
