@@ -32,8 +32,9 @@ repositories:
   work never lands on `main` directly.
 - `feature/<slug>` — cut from `develop` for each feature or ticket; merged back
   into `develop` when done.
-- `hotfix/<slug>` — cut from `main` when what is serving is broken; merged back
-  into `main` and into `develop`.
+- `hotfix/<slug>` — cut from `main` when what is serving is broken;
+  rebase-merged into `main`, then `develop` is rebased onto `main` to
+  inherit the fix.
 - `release` — this repo's release step is a persistent protected branch, not a
   per-release branch: merging `main` into `release` is the act that ships. The
   image is built, its smoke step runs the container and asserts `/api/compile`
@@ -42,7 +43,8 @@ repositories:
   deploys it — with no human step in between.
 
 So: feature work flows `feature/<slug>` → `develop` → `main`, hotfixes flow
-`hotfix/<slug>` → `main` + `develop`, nothing lands on `release` directly, and
+`hotfix/<slug>` → `main` (then `develop` is rebased onto `main`), nothing
+lands on `release` directly, and
 never expect a push to `main` to change what is serving. What production runs is
 recorded in that infrastructure repository's
 `manifests/overlays/prod/kustomization.yaml`; reverting that pin commit is the
@@ -52,8 +54,10 @@ reachable on `main`.
 Every promotion is a **merge commit** — the PR's merge commit, never its
 rebase or squash — and the same work lands on one branch at a time, never
 on two of `develop`, `main`, `release` (a cherry-pick across the pair
-counts as landing it twice); a hotfix is one commit merged into both `main`
-and `develop`. `feature/<slug>` → `develop` may be rebase-merged instead.
+counts as landing it twice). A hotfix is rebase-merged into `main`, then
+`develop` is rebased onto `main` so it inherits the fix as a shared
+ancestor; open feature branches are rebased onto the new `develop`.
+`feature/<slug>` → `develop` is a rebase-merge.
 If a promotion PR conflicts in files both branches recently touched, the
 lineages may be duplicated; diagnose before resolving: `git cherry
 <target> <source>` (a `-` line is work already on the target), `git
